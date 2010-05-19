@@ -30,20 +30,31 @@ BEGIN {
 
   my $text = define_text( 'first' );
 
-  my $locations_aref =
+  my $locs =
         do_finds_and_reps( \$text, $find_reps );
 
-  ($DEBUG) && print Dumper( $locations_aref );
+  ($DEBUG) && print Dumper( $locs );
 
   ($DEBUG) && print Dumper( $text );
 
   my $expected = define_expected_locs( 'first' );
-  is_deeply( $locations_aref, $expected,
+  is_deeply( $locs, $expected,
              "$test_name: first case" );
 
   my $expected_text = define_expected_text( 'first' );
   is( $text, $expected_text,
              "$test_name: first case" );
+
+  my $report = flatten_locs( $locs );
+  ($DEBUG) && print "report:\n$report\n";
+
+my $expected_report=<<"EXPECTORANT";
+0:622:630:2:stocky
+1:632:640:2:square
+2:594:597:-7:individual
+EXPECTORANT
+
+  is( $report, $expected_report, "Testing flatten_locs" );
 }
 
 
