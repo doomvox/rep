@@ -115,21 +115,30 @@ sub define_expected_locs {
   my $type = shift;
 
   my $expected =
-    { 'first' => [
-                  [
-                   622,
-                   630
-                  ],
-                  [
-                   632,
-                   640
-                  ],
-                  [
-                   594,
-                   597
-                  ]
-                 ],
-    };
+    { 'first' =>
+      [
+       [
+        [
+         622,
+         630,
+         2
+        ]
+       ],
+       [
+        [
+         632,
+         640,
+         2
+        ]
+       ],
+       [
+        [
+         594,
+         597,
+         -7
+        ]
+       ]
+      ];
 
   my $ret = $expected->{ $type };
   return $ret;
