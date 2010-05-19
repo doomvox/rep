@@ -71,25 +71,21 @@ my ($locs_temp_file, $reps_file);
 GetOptions ("d|debug"    => \$DEBUG,
             "v|version"  => sub{ say_version(); },
             "h|?|help"   => sub{ say_usage();   },
-            "t|temp=s"     => \$locs_temp_file,
             "s|substitutions=s" => \$reps_file,
            ) or say_usage();
 
-unless ($locs_temp_file) {
-  $locs_temp_file = "/tmp/$prog_change_locs";
-}
 
-# We don't put "-i" in the hash-bang, because we want
-# the calling program (an elisp function) to pick a good
-# back-up extension.
+# This version mimics "-i" behavior but reserves STDOUT to communicate
+# the changed location data back to the calling program (emacs)
 
-# Presuming we were run with "perl -i", then the following
-# idiom works to transform the entire file:
-
+my $input_file = shift;
+my $unique_extension = shift;
+my $backup = $input_file . $unique_extension;
+rename( $input_file, $backup ) or croak "$!";
 my $text;
-{
-  undef $/;
-  $text = <>;  # don't forget to "print $text" as the last step
+{ undef $/;
+  open my $fin, '<', $backup or croak "$!";
+  $text = <$fin>;
 }
 
 # find_and_reps are specified by perl-pseudo-code,
@@ -119,14 +115,13 @@ my $find_replaces_aref =
 my $locations_aref =
   do_finds_and_reps( \$text, $find_replaces_aref );
 
-print $text;
+open my $fout, '>', $input_file or croak "$!";
+print {$fout} $text;
+close($fout);
 
-# save to temp file the locations from $locations_aref
-open my $fh, '>', $locs_temp_file or croak "$!";
-foreach my $pair ( @{ $locations_aref } ) {
-  printf {$fh} "%d:%d", $pair->[0], $pair->[1];
-}
-close( $fh );
+# TODO write flatten_locs -- serialize for emacs comprehension
+my $flat_locs = flatten_locs( $locations_aref );
+print $flat_locs;
 
 ### end main, into the subs
 
