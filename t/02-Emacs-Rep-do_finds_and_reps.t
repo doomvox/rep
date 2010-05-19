@@ -138,7 +138,8 @@ sub define_expected_locs {
          -7
         ]
        ]
-      ];
+      ]
+      };
 
   my $ret = $expected->{ $type };
   return $ret;
