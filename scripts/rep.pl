@@ -110,8 +110,8 @@ if( $reps_file ) {
 my $find_replaces_aref =
   parse_perl_substitutions( $substitutions );
 
-# Apply the finds and replaces to text, recording the locations
-# of the changed strings
+# Apply the finds and replaces to text, recording the history
+# of the changes
 my $locations_aref =
   do_finds_and_reps( \$text, $find_replaces_aref );
 
@@ -119,7 +119,7 @@ open my $fout, '>', $input_file or croak "$!";
 print {$fout} $text;
 close($fout);
 
-# TODO write flatten_locs -- serialize for emacs comprehension
+# serialize the data to pass to emacs
 my $flat_locs = flatten_locs( $locations_aref );
 print $flat_locs;
 

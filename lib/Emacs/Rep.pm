@@ -52,6 +52,7 @@ our %EXPORT_TAGS = ( 'all' => [
       do_finds_and_reps
       parse_perl_substitutions
       flatten_locs
+      revise_locations
 
     ) ] );
 # The above allows declaration	use Emacs::Rep ':all';
@@ -67,7 +68,7 @@ our $VERSION = '0.01';
 Does a series of finds and replaces on some text and
 returns the beginning and end points of each of the
 modfied regions, along with some other information about
-the match.
+the matches.
 
 Takes two arguments:
 
@@ -114,7 +115,7 @@ it was modified.
 
 These changed locations are recorded *during* each pass, which
 means that later passes can mess up the numbering.  We can
-compensate for this later, using the deltas.  ((TODO See L<>)).
+compensate for this later, using the deltas.  See L<revise_locations>.
 
 =cut
 
@@ -146,6 +147,88 @@ sub do_finds_and_reps {
   }
   return \@locations; # aref of aref of arefs of pairs
 }
+
+=item revise_locations
+
+Example usage (note, revises structure in-place):
+
+  revise_locations( $locs );
+
+Compensates for a problem in the change history recorded by
+L<do_finds_and_reps>.
+
+Later passes with another substitution command can move around
+the modified strings from previous passes.
+
+This routine does some numerical magic, re-interpreting previous
+passes in the light of later ones.
+
+An example of a change history:
+
+ [
+  [ [ 3,       9,   -4,  'alpha'],
+    [ 39,     47,   10,  'ralpha'],
+    [ 111,   130,    0,  'XXX'],
+    [ 320,   332,  -33,  'blvd'],
+  ],
+  [ [ 12,     23,   6,  'widget'],
+    [ 33,     80,   6,  'wadget'],
+    [ 453,   532,   6,  'wandat'],
+  ],
+ ]
+
+Given this data, we can see that the first pass needs to be shifted
+forward by a delta of 6, acting at the *end-point* of the changed region.
+
+So any locations after 23 need to have 6 added to them (and
+locations after 80 need another 6 and ones after 532 -- if there
+were any -- would need another 6).
+
+=cut
+
+# TODO now how the fook will we do this?
+# Brute force: for each pass after the first,
+# we will revise all previous passes.
+
+# Perhaps it would make sense to do an intermediate flatten?
+# Add a pass number in front of the beg/end integers
+
+# Or... how about we crunch through the data in reverse order,
+# and record accumulated deltas, keyed by the location to apply
+# them?  Note: "apply" means revise beg/end, size of earlier deltas
+# is untouched...
+# but is the position the earlier deltas act at the revised position?
+# "yes", pretty sure that's how it should go.
+
+sub revise_locations {
+  my $locs = shift;
+
+  # named array indicies for readability
+  my ($BEG, $END, $DELTA, $ORIG ) = 0 .. 3;
+  my %delta;
+  #  for my $i ( $#{ $locs } .. 0 ) {
+  #    $pass = $locs->[ $i ];
+  foreach my $pass ( reverse @{ $locs } ) { # Does reverse copy? No want... but these are refs
+    foreach my $row ( @{ $pass } ) {
+
+      foreach my $spot ( sort keys %delta) {
+        if ( $row->[ $BEG ] >= $spot ) {
+          $row->[ $BEG ] += $delta{ $spot };
+        }
+        if ( $row->[ $END ] >= $spot  ) {
+          $row->[ $END ] += $delta{ $spot };
+        }
+      }
+
+      { no warnings 'uninitialized';
+        $delta{ $row->[ $END ] } += $row->[ $DELTA ];
+      }
+    }
+  }
+}
+
+
+
 
 =item parse_perl_substitutions
 

@@ -9,7 +9,7 @@ my $DEBUG = 1;             # TODO set to 0 before ship
 use Data::Dumper;
 
 use Test::More;
-BEGIN { plan tests => 3 }; # TODO revise test count
+BEGIN { plan tests => 7 }; # TODO revise test count
 
 use FindBin qw( $Bin );
 use lib "$Bin/../lib";
@@ -57,6 +57,44 @@ EXPECTORANT
   is( $report, $expected_report, "Testing flatten_locs" );
 }
 
+{
+  my $test_name = "Testing revise_locations";
+
+  my $substitutions = define_substitution_cases( 'second' );
+
+  my $find_reps =
+    parse_perl_substitutions( $substitutions );
+
+  ($DEBUG) && print Dumper( $find_reps );
+
+  my $text = define_text( 'first' );  # re-using 'first'
+
+  my $locs =
+        do_finds_and_reps( \$text, $find_reps );
+
+  ($DEBUG) && print "change history: ", Dumper( $locs );
+  ($DEBUG) && print "changed text: ", Dumper( $text );
+
+  my $expected = define_expected_locs( 'second' );
+  is_deeply( $locs, $expected,
+             "Testing do_finds_and_reps: second case" );
+
+  my $expected_text = define_expected_text( 'second' );
+  is( $text, $expected_text,
+             "Testing do_finds_and_reps: second case" );
+
+
+  revise_locations( $locs );
+  ($DEBUG) && print "revised locs: ", Dumper( $locs );
+
+   my $expected_revlocs = define_expected_locs( 'second_revised' );
+   is_deeply( $locs, $expected_revlocs,
+              "$test_name: second case" );
+
+}
+
+
+
 
 ### end main, into the subs
 
@@ -73,9 +111,17 @@ sub define_substitution_cases {
    s|individual|MAN|
 END_S
 
+  my $second_substitutions=<<'END_S2';
+   s/cars/bikes/
+   s/evening/women's/
+   s/midnight/midnightMIDNIGHTmidnight/
+   s|MIDNIGHTmidnight| (midnacht!)|
+END_S2
+
   my $cases =
     {
      first => $first_substitutions,
+     second => $second_substitutions,
       };
 
   my $substitutions = $cases->{ $type };
@@ -127,33 +173,104 @@ sub define_expected_locs {
 
   my $expected =
     { 'first' =>
-[
+      [
+       [
+        [
+         622,
+         630,
+         2,
+         'stocky'
+        ]
+       ],
+       [
+        [
+         632,
+         640,
+         2,
+         'square'
+        ]
+       ],
+       [
+        [
+         594,
+         597,
+         -7,
+         'individual'
+        ]
+       ]
+      ],
+      'second' =>
+      [
+       [
+        [
+         244,
+         249,
+         1,
+         'cars'
+        ]
+       ],
+       [
+        [
+         553,
+         560,
+         0,
+         'evening'
+        ]
+       ],
+       [
+        [
+         45,
+         69,
+         16,
+         'midnight'
+        ]
+       ],
+       [
+        [
+         45,
+         57,
+         -4,
+         'MIDNIGHTmidnight'
+        ]
+       ]
+      ],
+      'second_revised' =>
+      [
           [
             [
-              622,
-              630,
-              2,
-              'stocky'
+              256,
+              261,
+              1,
+              'cars'
             ]
           ],
           [
             [
-              632,
-              640,
-              2,
-              'square'
+              565,
+              572,
+              0,
+              'evening'
             ]
           ],
           [
             [
-              594,
-              597,
-              -7,
-              'individual'
+              45,
+              65,
+              16,
+              'midnight'
+            ]
+          ],
+          [
+            [
+              45,
+              57,
+              -4,
+              'MIDNIGHTmidnight'
             ]
           ]
-        ]
-      };
+        ],
+
+    };
 
   my $ret = $expected->{ $type };
   return $ret;
@@ -186,6 +303,22 @@ two men dressed in evening clothes. One was a tall, gray-haired MAN; the
 other a stockish, squarish-faced man who leaned heavily upon a stout cane as he
 descended the steps. The two men paused as they reached the sidewalk.
 ',
+      'second' => '     CHAPTER I
+
+     FOOTSTEPS TO CRIME
+
+     IT was midnight (midnacht!). From the brilliance of one of Washington\'s broad avenues,
+the lights of a large embassy building could be seen glowing upon the sidewalks
+of the street on which it fronted.
+     Parked bikes lined the side street. One by one they were moving from their
+places, edging to the space in front of the embassy, where departing guests
+were ready to leave. An important social event was coming to its close.
+     The broad steps of the embassy were plainly lighted. Upon them appeared
+two men dressed in women\'s clothes. One was a tall, gray-haired individual; the
+other a stocky, square-faced man who leaned heavily upon a stout cane as he
+descended the steps. The two men paused as they reached the sidewalk.
+'
+
       };
 
 
