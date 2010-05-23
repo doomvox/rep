@@ -28,7 +28,7 @@ BEGIN {
 
   ($DEBUG) && print Dumper( $find_reps );
 
-  my $text = define_text( 'first' );
+  my $text = define_text( 'main_text' );
 
   my $locs =
         do_finds_and_reps( \$text, $find_reps );
@@ -67,7 +67,7 @@ EXPECTORANT
 
   ($DEBUG) && print Dumper( $find_reps );
 
-  my $text = define_text( 'first' );  # re-using 'first'
+  my $text = define_text( 'main_text' );
 
   my $locs =
         do_finds_and_reps( \$text, $find_reps );
@@ -83,15 +83,68 @@ EXPECTORANT
   is( $text, $expected_text,
              "Testing do_finds_and_reps: second case" );
 
+  ($DEBUG) && print "substitutions\n: $substitutions\n";
+
+  my $report_1 = flatten_locs( $locs );
+  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
 
   revise_locations( $locs );
-  ($DEBUG) && print "revised locs: ", Dumper( $locs );
+#  ($DEBUG) && print "revised locs: ", Dumper( $locs );
+
+  my $report_2 = flatten_locs( $locs );
+  ($DEBUG) && print "report before revise_locations:\n$report_2\n";
 
    my $expected_revlocs = define_expected_locs( 'second_revised' );
    is_deeply( $locs, $expected_revlocs,
               "$test_name: second case" );
 
 }
+
+
+
+{
+  my $test_name = "Testing revise_locations";
+
+  my $substitutions = define_substitution_cases( 'third' );
+
+  my $find_reps =
+    parse_perl_substitutions( $substitutions );
+
+  ($DEBUG) && print Dumper( $find_reps );
+
+  my $text = define_text( 'main_text' );
+
+  my $locs =
+        do_finds_and_reps( \$text, $find_reps );
+
+  ($DEBUG) && print "change history: ", Dumper( $locs );
+  ($DEBUG) && print "changed text: ", Dumper( $text );
+
+  my $expected = define_expected_locs( 'third' );
+  is_deeply( $locs, $expected,
+             "Testing do_finds_and_reps: third case" );
+
+  my $expected_text = define_expected_text( 'third' );
+  is( $text, $expected_text,
+             "Testing do_finds_and_reps: third case" );
+
+  ($DEBUG) && print "substitutions\n: $substitutions\n";
+
+  my $report_1 = flatten_locs( $locs );
+  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
+
+  revise_locations( $locs );
+#  ($DEBUG) && print "revised locs: ", Dumper( $locs );
+
+  my $report_2 = flatten_locs( $locs );
+  ($DEBUG) && print "report before revise_locations:\n$report_2\n";
+
+   my $expected_revlocs = define_expected_locs( 'third_revised' );
+   is_deeply( $locs, $expected_revlocs,
+              "$test_name: third case" );
+
+}
+
 
 
 
@@ -118,10 +171,22 @@ END_S
    s|MIDNIGHTmidnight| (midnacht!)|
 END_S2
 
+# Go for lots of scattered little changes
+  my $third_substitutions=<<'END_S3';
+   s/cars/bikes/
+   s/of/OVER-THERE/
+   s/\. /. And it was all DOOMED. /
+   s/evening/women's/
+   s/cane/vibrator/
+   s/\bin/skin/
+   s|CHAPTER|Chapped|
+END_S3
+
   my $cases =
     {
-     first => $first_substitutions,
+     first  => $first_substitutions,
      second => $second_substitutions,
+     third  => $third_substitutions,
       };
 
   my $substitutions = $cases->{ $type };
@@ -155,7 +220,7 @@ END_S
 
   my $texts =
     {
-     first => $first_text,
+     main_text => $first_text,
       };
 
   my $substitutions = $texts->{ $type };
@@ -269,6 +334,10 @@ sub define_expected_locs {
             ]
           ]
         ],
+      'third' =>
+      [],
+      'third_revised' =>
+      [],
 
     };
 
@@ -317,6 +386,22 @@ were ready to leave. An important social event was coming to its close.
 two men dressed in women\'s clothes. One was a tall, gray-haired individual; the
 other a stocky, square-faced man who leaned heavily upon a stout cane as he
 descended the steps. The two men paused as they reached the sidewalk.
+',
+
+      'third' => '     Chapped I
+
+     FOOTSTEPS TO CRIME
+
+     IT was midnight. And it was all DOOMED. From the brilliance OVER-THERE one OVER-THERE Washington\'s broad avenues,
+the lights OVER-THERE a large embassy building could be seen glowing upon the sidewalks
+OVER-THERE the street on which it fronted.
+     Parked bikes lined the side street. And it was all DOOMED. One by one they were moving from their
+places, edging to the space skin front OVER-THERE the embassy, where departing guests
+were ready to leave. And it was all DOOMED. An important social event was coming to its close.
+     The broad steps OVER-THERE the embassy were plainly lighted. And it was all DOOMED. Upon them appeared
+two men dressed skin women\'s clothes. And it was all DOOMED. One was a tall, gray-haired skindividual; the
+other a stocky, square-faced man who leaned heavily upon a stout vibrator as he
+descended the steps. And it was all DOOMED. The two men paused as they reached the sidewalk.
 '
 
       };

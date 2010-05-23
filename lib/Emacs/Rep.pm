@@ -127,7 +127,9 @@ sub do_finds_and_reps {
   my $pass = 0;
   foreach my $sub_pair ( @{ $find_replaces } ) {
     my ($find_pat, $replace) = @{ $sub_pair };
+
     my @pass = ();
+    my $delta_sum = 0; # running total of deltas for the pass
     ${ $text_ref } =~
       s{$find_pat}
        {
@@ -136,12 +138,16 @@ sub do_finds_and_reps {
          my $l1 = length( $& );
          my $l2 = length( $s );
          my $delta = $l2 - $l1;
-         my $p = pos( ${ $text_ref } );
-         my $beg = $p - $l1;
-         my $end = $p + ($delta);
+         # pos now points at the beginning of the match
+         # using a numbering fixed at the start of the s///ge run
+         my $p = pos( ${ $text_ref } ) + 1 + $delta_sum;
+         my $beg = $p;
+         my $end = $p + $l2;
          push @pass, [$beg, $end, $delta, $&];
+         $delta_sum += $delta;
          $s
        }ge;
+
     push @locations, \@pass;
     $pass++;
   }
@@ -177,8 +183,9 @@ An example of a change history:
   ],
  ]
 
-Given this data, we can see that the first pass needs to be shifted
-forward by a delta of 6, acting at the *end-point* of the changed region.
+Given this data, we can see that the first pass needs to be
+shifted forward by a delta of 6, acting at the end-point of each
+changed region.
 
 So any locations after 23 need to have 6 added to them (and
 locations after 80 need another 6 and ones after 532 -- if there
@@ -186,19 +193,11 @@ were any -- would need another 6).
 
 =cut
 
-# TODO now how the fook will we do this?
-# Brute force: for each pass after the first,
-# we will revise all previous passes.
-
-# Perhaps it would make sense to do an intermediate flatten?
-# Add a pass number in front of the beg/end integers
-
-# Or... how about we crunch through the data in reverse order,
+# So: we crunch through the data in reverse order,
 # and record accumulated deltas, keyed by the location to apply
-# them?  Note: "apply" means revise beg/end, size of earlier deltas
-# is untouched...
-# but is the position the earlier deltas act at the revised position?
-# "yes", pretty sure that's how it should go.
+# them, i.e. to revise the beg  and end points.
+# The size of earlier deltas is untouched, BUT
+# the position the earlier deltas act is the revised position.
 
 sub revise_locations {
   my $locs = shift;
@@ -206,12 +205,9 @@ sub revise_locations {
   # named array indicies for readability
   my ($BEG, $END, $DELTA, $ORIG ) = 0 .. 3;
   my %delta;
-  #  for my $i ( $#{ $locs } .. 0 ) {
-  #    $pass = $locs->[ $i ];
-  foreach my $pass ( reverse @{ $locs } ) { # Does reverse copy? No want... but these are refs
+  foreach my $pass ( reverse @{ $locs } ) {
     foreach my $row ( @{ $pass } ) {
-
-      foreach my $spot ( sort keys %delta) {
+      foreach my $spot ( sort {$a <=> $b} keys %delta) {
         if ( $row->[ $BEG ] >= $spot ) {
           $row->[ $BEG ] += $delta{ $spot };
         }
@@ -219,14 +215,47 @@ sub revise_locations {
           $row->[ $END ] += $delta{ $spot };
         }
       }
+    }
 
-      { no warnings 'uninitialized';
+    foreach my $row ( @{ $pass } ) {
+      { no warnings 'uninitialized';   # TODO trial, giving it it's own for row loop
         $delta{ $row->[ $END ] } += $row->[ $DELTA ];
       }
     }
+
   }
 }
 
+=item flatten_locs
+
+Serialize the locations data structure for emacs comprehension.
+
+Note: need to preserve "pass" information to colorize each one
+differently.
+
+We pass on the delta info just because it is there.
+
+The result is a block of text, where each line has four
+integers separated by colons, in this order:
+
+  <pass>:<beg>:<end>:<delta>:<orig>
+
+=cut
+
+sub flatten_locs {
+  my $locations = shift;
+  my $ret = '';
+
+  my $pass_count = 0;
+  foreach my $pass ( @{ $locations } ) {
+    foreach my $row ( @{ $pass } ) {
+      my ($beg, $end, $delta, $orig) = @{ $row };
+      $ret .= sprintf "%d:%d:%d:%d:%s\n", $pass_count, $beg, $end, $delta, $orig;
+    }
+    $pass_count++;
+   }
+  return $ret;
+}
 
 
 
@@ -314,7 +343,8 @@ sub parse_perl_substitutions {
   # On the other hand "\\." makes sense to pass a "\b", but then why special handling of
   # "\\ \1"?
 
-  my $s_ref = [ split '\n', $substitutions ];
+#   my $s_ref = [ split '\n', $substitutions ]; # already done in the script (for now)
+   my $s_ref = $substitutions;
 
   foreach my $s ( @{ $s_ref } ) {
     if ( $s =~ m{ $scraper_pat_1 }x ) {
@@ -337,7 +367,9 @@ sub parse_perl_substitutions {
       push @find_reps, [ $find, $rep ];
 
     } else {
-      print STDERR "Problem parsing, skipping: $s\n";  # TODO when live, should *croak*.
+#      print STDERR "Problem parsing, skipping: $s\n";  # TODO when live, should *croak*.
+                                                        # And maybe: make stack of changes atomic.
+#      Why is STDERR getting mixed in with return from shell-commmand-to-string?
     }
   }
   \@find_reps;
@@ -345,36 +377,6 @@ sub parse_perl_substitutions {
 
 
 
-=item flatten_locs
-
-Serialize the locations data structure for emacs comprehension.
-
-Note: need to preserve "pass" information to colorize each one
-differently.
-
-We pass on the delta info just because it is there.
-
-The result is a block of text, where each line has four
-integers separated by colons, in this order:
-
-  <pass>:<beg>:<end>:<delta>:<orig>
-
-=cut
-
-sub flatten_locs {
-  my $locations = shift;
-  my $ret = '';
-
-  my $pass_count = 0;
-  foreach my $pass ( @{ $locations } ) {
-    foreach my $row ( @{ $pass } ) {
-      my ($beg, $end, $delta, $orig) = @{ $row };
-      $ret .= sprintf "%d:%d:%d:%d:%s\n", $pass_count, $beg, $end, $delta, $orig;
-    }
-    $pass_count++;
-   }
-  return $ret;
-}
 
 
 
