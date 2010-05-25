@@ -333,7 +333,7 @@ Example:
 
 ;; TODO eventually need something that reads the most recent revert
 ;; file off of a buffer-local stack
-(defun rep-baby-revert-changes ()
+(defun rep-revert-all-changes ()
   "Revert to the *.bak file."
   (interactive)
   (let* ( (bfn1 (buffer-file-name))
@@ -408,20 +408,53 @@ without performing the change."
   ))
 
 ;;---------
-;; controlling modes
+;; controlling  modes
+
+
+;; default binding to begin it all: C-cS
+(defun rep-define-global-key-binding (&optional prefix)
+  "Defines a global keybinding to open a new substitutions buffer."
+  (interactive) ;; DEBUG
+  (unless prefix (setq prefix "\C-c"))
+  (global-set-key (format "%sS" prefix) 'rep-open-substitutions-buffer)
+  (message "Defined bindings for key: S under the prefix %s" prefix)
+  )
+
+(defvar rep-default-substitutions-directory "/tmp")
+
+;; TODO watch out for small windows without room to split.
+;; 10 lines maybe should be percentage if window is a little small.
+;; TODO add local-vars table (or something) so you get the right mode if you
+;; save and open again.
+;; TODO this *has* to be saved to a file for rep.pl to work.
+;; TODO add a "file" param to override the default.
+;; TODO by default, should get a unique file
+(defun rep-open-substitutions-buffer ()
+  "Open a new substitutions buffer."
+  (interactive)
+  (let* (( upper-size 10 )
+         ( dir rep-default-substitutions-directory )
+         ( default-buffer-file (concat dir "/" "substitutions.rep") )
+         )
+    (split-window-vertically upper-size)
+    (find-file default-buffer-file)
+    (rep-substitutions-mode)
+    ))
+
 
 (define-derived-mode rep-substitutions-mode
-  text-mode "rep-substitutions-"
+  cperl-mode "rep-substitutions"
   "Major mode to enter stack of substitutions to be applied.
 \\{rep-substitutions-mode-map}"
   (use-local-map rep-substitutions-mode-map)
   )
 
-
 (define-key rep-substitutions-mode-map "\M-\C-m" 'rep-do-these-changes-other-window)
 ;; TODO fill in any other bindings:
 ;; (define-key rep-substitutions-mode-map "\C-m" 'rep-substitutions-do-it)
 
-
+;; rep-what-was-changed-here
+;; rep-revert-change-here
+;; rep-revert-all-changes
 
 ;;; rep.el ends here
