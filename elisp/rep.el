@@ -41,8 +41,10 @@
 ;;;;##########################################################################
 
 ;; TODO research how flyspell mode works.
+;;      research overlays
+;;      review macros again (sigh)
 
-
+;; TODO DELETE eventually
 ;; Basic face definition used during development.
 (defface rep-changed-face
   '((((class color)
@@ -54,13 +56,11 @@
   "Face used for indicating a change made by rep.el"
   :group 'desktop-recover-faces)
 
+
 ;; (set-face-underline-p 'rep-changed-face t)
 (set-face-underline-p 'rep-changed-face "green")
 ;;  Docs: If UNDERLINE is a string, underline with the color named UNDERLINE.
 
-;; borrowed from my own desktop-recover.el
-;; each face requires specification of two colors, one for light
-;; backgrounds, one for dark
 
 ;; TODO get :underline to work at this stage?
 ;; (defmacro rep-make-face (name number color1 color2)
@@ -80,6 +80,7 @@
 ;;   :group 'rep-faces
 ;;   ))
 
+
 (defmacro rep-make-face (name number color1 color2)
   `(defface ,name
   '((((class color)
@@ -88,7 +89,7 @@
     (((class color)
       (background dark))
      (:foreground ,color2)))
-  ,(format "Face used for to indicate changes from substitution number: %s." number)
+  ,(format "Face used for changes from substitution number: %s." number)
   :group 'desktop-recover-faces
   ))
 
@@ -129,25 +130,6 @@
 (rep-make-face rep-31-face 31 "PeachPuff4" "PeachPuff1")
 (rep-make-face rep-32-face 32 "firebrick4" "firebrick1")
 (rep-make-face rep-33-face 33 "PeachPuff4" "PeachPuff1")
-
-;; 33
-;; 34
-;; 35
-;; 36
-;; 37
-;; 38
-;; 39
-;; 40
-;; 41
-;; 42
-;; 43
-;; 44
-;; 45
-;; 46
-;; 47
-;; 48
-;; 49
-;; 50
 
 (defvar rep-face-alist ()
  "Faces keyed by number (an integer to font association).")
@@ -193,9 +175,9 @@
 ;; We then look-up a font like so:
 ;;  (cdr (assoc 1 rep-face-alist))
 
-;; Indirect number in variable
-;; (setq rep-change-numb 3)
-;; (cdr (assoc rep-change-numb rep-face-alist))
+;; Indirect lookup using number in variable
+;;   (setq rep-change-numb 3)
+;;   (cdr (assoc rep-change-numb rep-face-alist))
 
 ;; DEBUG
 (defun rep-change-face-region-by-numb (beg end)
@@ -251,29 +233,27 @@ Turns off font-lock to avoid conflict with existing syntax coloring.
          (setq data (shell-command-to-string perl-rep-cmd))
 
          (set-buffer target-file-buffer)
-         (let* ((preserve-modes t))  ;; don't see what this does
-           (revert-buffer t t preserve-modes))
+         (revert-buffer t t t) ;;last option: "preserve-modes" what does it do?
          (font-lock-mode -1)
 
+         ;; TODO Doesn't allow multi-line 'orig'.
+         ;;   Add semi-colons to data format? And escape embedded semi-c?
          ;; split data into lines
          (setq substitution-lines (split-string data "\n" t))
          (dolist (line  substitution-lines)
            (cond ((not (string-equal "" line)) ;; skip blank lines
                   ;; split each line into five fields
                   (let* (
-                         ;; DELETE OLD: no good with ':' in last field
-                         ;; (fields (split-string line ":" ))
                          (fields (rep-split-limited ":" line 5) )
                           (pass   (string-to-number (nth 0 fields)))
                           (beg    (string-to-number (nth 1 fields)))
                           (end    (string-to-number (nth 2 fields)))
                           (delta  (string-to-number (nth 3 fields))) ;; unused?
-                          (orig   (nth 4 fields)) ;; TODO attach to text as property
-                          ;; DELETE OLD:
-                          ;; (markup-face (cdr (assoc pass rep-face-alist)))
+                          (orig   (nth 4 fields))
                           (markup-face (rep-lookup-markup-face pass))
                           )
                     (put-text-property beg end 'face markup-face target-file-buffer)
+                    (put-text-property beg end 'rep-original-replaced-string orig target-file-buffer)
                     )))
            )))
 
@@ -345,6 +325,19 @@ Example:
 ;;    (forward-char 1)
     ))
 
+
+
+(defun rep-what-was-changed-here ()
+  "Tells you what the original replaced string was for the next change."
+  (interactive)
+  (let* (capture)
+    ;; TODO skip forward to next occurence of property rep-original-replaced-string
+    ;; echo value of just that property
+
+    (setq capture (text-properties-at (point)))
+    (message (pp-to-string capture))
+;;    (forward-char 1)
+    ))
 
 
 
