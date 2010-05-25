@@ -235,8 +235,7 @@ Turns off font-lock to avoid conflict with existing syntax coloring.
           (changes-list-file    (buffer-file-name))
           (changes-list-buffer  (current-buffer)) ;; unused?
 
-          (target-file)
-          (target-file-buffer)
+          target-file target-file-buffer
          )
          (other-window 1)
          (setq target-file          (buffer-file-name))
@@ -261,27 +260,31 @@ Turns off font-lock to avoid conflict with existing syntax coloring.
          (dolist (line  substitution-lines)
            (cond ((not (string-equal "" line)) ;; skip blank lines
                   ;; split each line into five fields
-                  (let* ( (fields (split-string line ":" )) ;; no good with ':' in last field
+                  (let* (
+                         ;; DELETE OLD: no good with ':' in last field
+                         ;; (fields (split-string line ":" ))
+                         (fields (rep-split-limited ":" line 5) )
                           (pass   (string-to-number (nth 0 fields)))
                           (beg    (string-to-number (nth 1 fields)))
                           (end    (string-to-number (nth 2 fields)))
                           (delta  (string-to-number (nth 3 fields))) ;; unused?
-                          (orig   (nth 4 fields))                    ;; TODO attach to text as property
-                          ;;; (markup-face (cdr (assoc pass rep-face-alist)))
+                          (orig   (nth 4 fields)) ;; TODO attach to text as property
+                          ;; DELETE OLD:
+                          ;; (markup-face (cdr (assoc pass rep-face-alist)))
                           (markup-face (rep-lookup-markup-face pass))
                           )
                     (put-text-property beg end 'face markup-face target-file-buffer)
                     )))
            )))
 
-
-;; TODO this could also munge the face, e.g. adding :underline
-;;   (set-face-underline-p 'rep-00-face "red")
+;; TODO a bit hacky having this routine apply underlining.
+;; work on the defmacro defface (sigh)
 (defun rep-lookup-markup-face (pass)
   "Given an integer PASS, returns an appropriate face from \[[rep-face-alist]].
 These faces are named rep-NN-face where NN is a two-digit integer.
 In the event that PASS exceeds the number of such defined faces, this
-routine will wrap around and begin reusing the low-numbered fonts."
+routine will wrap around and begin reusing the low-numbered fonts.
+As a side effect, this function makes the face underlined in red."
   (interactive "npick a number: ") ;; DEBUG
   (let ( markup-face limit index )
     (setq pass (+ pass 12))
@@ -293,6 +296,28 @@ routine will wrap around and begin reusing the low-numbered fonts."
     (set-face-underline-p markup-face "red")  ;; question: need light/dark?
     markup-face
     ))
+
+(defun rep-split-limited (delimiter line limit)
+  "Split LINE on DELIMITER into no more than LIMIT fields.
+This is something like perl's limit feature on splits.
+Using this additional, superfluous delimiters are allowed in the final field.
+Example:
+ (rep-split-limited \":\" \"hey:ho:lets:go:gabba:gabba:hey\" 5)
+ (\"hey\" \"ho\" \"lets\" \"go\" \"gabba:gabba:hey\")
+"
+  (let* ((raw (split-string line delimiter))
+         (new-list ())
+         (i 0)
+         (i-limit (- limit 1))
+         )
+    (while (< i i-limit)
+      (push (pop raw) new-list)
+      (setq i (1+ i))
+      )
+    (push (mapconcat 'identity raw delimiter) new-list)
+    (nreverse new-list)
+    ))
+
 
 ;; TODO eventually need something that reads the most recent revert
 ;; file off of a buffer-local stack
