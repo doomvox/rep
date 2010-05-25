@@ -358,33 +358,69 @@ Example:
     ))
 
 (defun rep-what-was-changed-here ()
-  "Tells you what the original replaced string was for a change.
+  "Tells you what the original string was before it was replaced.
 Looks at the changed string under the cursor, or if not defined
 there, tries to advance the cursor to the next change."
   (interactive)
-  (let* (capture
-         orig
-         spot
-         )
-    (setq orig (get-text-property (point) 'rep-original-replaced-string))
+  (let* ( (orig (get-text-property (point) 'rep-original-replaced-string)) )
     (unless orig
-      (setq spot (next-single-property-change (point) 'rep-original-replaced-string))
-      (setq orig (get-text-property spot 'rep-original-replaced-string))
-      (goto-char spot)
-      )
+      (let ( (spot (next-single-property-change (point) 'rep-original-replaced-string)) )
+        (setq orig (get-text-property spot 'rep-original-replaced-string))
+        (goto-char spot)
+        ))
     (message orig)
     ))
 
-;; TODO write routine that finds the extent of the current change
-;; use that to write an individual-change-revert
-;; Use this:
-;;  -- Function: previous-single-property-change pos prop &optional object
-;;           limit
 
-;; And maybe:
-;;  -- Function: remove-text-properties start end props &optional object
-;;      This function deletes specified text properties from the text
-;;      between START and END in the string or buffer OBJECT.  If OBJECT
+;; TODO a good first cut, but it gets confused by cascading changes,
+;; i.e. when a LH matched a preceeding RH.
+;; also attach the delta as a property, so you can detect whether you're looking
+;; at the whole range?  Possibly, stash more change information, original
+;; values plus extents, in a stack, so you know what was done to each char...
+(defun rep-revert-change-here (&optional dryrun)
+  "Reverts the individual change near the cursor to it's original form.
+With prefix argument (or DRYRUN option), will show extent to be reverted
+without performing the change."
+  (interactive "P")
+  (let* ( (orig (get-text-property (point) 'rep-original-replaced-string))
+          beg end
+          )
+    (cond ((not orig)
+            (setq beg  (next-single-property-change (point) 'rep-original-replaced-string))
+            (setq end  (next-single-property-change beg     'rep-original-replaced-string))
+            (setq orig (get-text-property beg 'rep-original-replaced-string))
+          )
+          (t
+           (setq beg (previous-single-property-change (point) 'rep-original-replaced-string))
+           (setq end (next-single-property-change (point) 'rep-original-replaced-string))
+           ))
+    (cond (dryrun
+           (goto-char beg)
+           (set-mark beg)
+           (goto-char end)
+           (exchange-point-and-mark)
+           )
+          (t
+           (kill-region beg end)
+           (insert orig)
+           (message orig)
+           ))
+  ))
+
+;;---------
+;; controlling modes
+
+(define-derived-mode rep-substitutions-mode
+  text-mode "rep-substitutions-"
+  "Major mode to enter stack of substitutions to be applied.
+\\{rep-substitutions-mode-map}"
+  (use-local-map rep-substitutions-mode-map)
+  )
+
+
+(define-key rep-substitutions-mode-map "\M-\C-m" 'rep-do-these-changes-other-window)
+;; TODO fill in any other bindings:
+;; (define-key rep-substitutions-mode-map "\C-m" 'rep-substitutions-do-it)
 
 
 
