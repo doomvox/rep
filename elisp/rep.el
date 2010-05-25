@@ -208,14 +208,14 @@ Turns off font-lock to avoid conflict with existing syntax coloring.
 "
   (interactive)
   (let* (
-          perl-rep-cmd data
+          pass perl-rep-cmd data
           substitution-lines
          ( bak-extension "bak" )  ;; TODO choose unique extension, push info onto a buffer-local stack
 ;;         ( rep-pl "rep.pl" )    ;; TODO sort out path problem
          ( rep-pl "/home/doom/End/Cave/Rep/Wall/Emacs-Rep/scripts/rep.pl")
 
           (changes-list-file    (buffer-file-name))
-          (changes-list-buffer  (current-buffer)) ;; unused?
+          (changes-list-buffer  (current-buffer))
 
           target-file target-file-buffer
          )
@@ -237,7 +237,7 @@ Turns off font-lock to avoid conflict with existing syntax coloring.
          (font-lock-mode -1)
 
          ;; TODO Doesn't allow multi-line 'orig'.
-         ;;   Add semi-colons to data format? And escape embedded semi-c?
+         ;;   need semi-colons (and escaped ones) on this data format?
          ;; split data into lines
          (setq substitution-lines (split-string data "\n" t))
          (dolist (line  substitution-lines)
@@ -254,8 +254,37 @@ Turns off font-lock to avoid conflict with existing syntax coloring.
                           )
                     (put-text-property beg end 'face markup-face target-file-buffer)
                     (put-text-property beg end 'rep-original-replaced-string orig target-file-buffer)
-                    )))
-           )))
+                    ))))
+         (rep-markup-lines changes-list-buffer)
+         ))
+
+(defun rep-markup-lines (buffer)
+  "Mark-up the lines in the given BUFFER.
+Leaves the current window active."
+  (save-excursion ;; but that trick *never* works... so don't trust it
+    (let* ( (original-buffer (current-buffer))
+            line-number markup-face
+            (lines-left 1)
+                         )
+    (set-buffer buffer)
+    (font-lock-mode -1)
+    (goto-char (point-min))
+    (setq line-number 0)
+    (while lines-left
+          (setq markup-face (rep-lookup-markup-face line-number))
+          (let* ( (beg (point))
+                  end )
+            (move-end-of-line 1)
+            (setq end (point))
+            (put-text-property beg end 'face markup-face)
+            )
+          (setq line-number (1+ line-number))
+          (setq lines-left (= 0 (forward-line 1)))
+          )
+    (set-buffer original-buffer)
+    )
+    ))
+
 
 ;; TODO a bit hacky having this routine apply underlining.
 ;; work on the defmacro defface (sigh)
@@ -267,7 +296,7 @@ routine will wrap around and begin reusing the low-numbered fonts.
 As a side effect, this function makes the face underlined in red."
   (interactive "npick a number: ") ;; DEBUG
   (let ( markup-face limit index )
-    (setq pass (+ pass 12))
+;;    (setq pass (+ pass 12))
     (setq limit (length rep-face-alist) )
     (setq index (mod pass limit))
     (setq markup-face (cdr (assoc index rep-face-alist)))
@@ -276,6 +305,9 @@ As a side effect, this function makes the face underlined in red."
     (set-face-underline-p markup-face "red")  ;; question: need light/dark?
     markup-face
     ))
+
+
+
 
 (defun rep-split-limited (delimiter line limit)
   "Split LINE on DELIMITER into no more than LIMIT fields.
@@ -325,19 +357,34 @@ Example:
 ;;    (forward-char 1)
     ))
 
-
-
 (defun rep-what-was-changed-here ()
-  "Tells you what the original replaced string was for the next change."
+  "Tells you what the original replaced string was for a change.
+Looks at the changed string under the cursor, or if not defined
+there, tries to advance the cursor to the next change."
   (interactive)
-  (let* (capture)
-    ;; TODO skip forward to next occurence of property rep-original-replaced-string
-    ;; echo value of just that property
-
-    (setq capture (text-properties-at (point)))
-    (message (pp-to-string capture))
-;;    (forward-char 1)
+  (let* (capture
+         orig
+         spot
+         )
+    (setq orig (get-text-property (point) 'rep-original-replaced-string))
+    (unless orig
+      (setq spot (next-single-property-change (point) 'rep-original-replaced-string))
+      (setq orig (get-text-property spot 'rep-original-replaced-string))
+      (goto-char spot)
+      )
+    (message orig)
     ))
+
+;; TODO write routine that finds the extent of the current change
+;; use that to write an individual-change-revert
+;; Use this:
+;;  -- Function: previous-single-property-change pos prop &optional object
+;;           limit
+
+;; And maybe:
+;;  -- Function: remove-text-properties start end props &optional object
+;;      This function deletes specified text properties from the text
+;;      between START and END in the string or buffer OBJECT.  If OBJECT
 
 
 
