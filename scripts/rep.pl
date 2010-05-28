@@ -111,20 +111,19 @@ my $backup = $input_file . '.' . $unique_extension;
 #   either from the substitutions file,
 #   or from command-line (a series of strings from @ARGV),
 
-my $substitutions;
+my $reps_text;
 if( $reps_file ) {
   undef $/;
   open my $fh, '<', $reps_file or croak "$!";
-  my $reps_text = <$fh>;
-  $substitutions = [ split '\n', $reps_text ];  # TODO improve: want to handle multiline
+  $reps_text = <$fh>;
 } else {
-  @{ $substitutions } = @ARGV;
+  $reps_text = join( "\n", @ARGV );
 }
 
 # process the find_and_reps into an array of find and replace
 # pairs (modifiers get moved inside the find.)
 my $find_replaces_aref =
-  parse_perl_substitutions( $substitutions );
+  parse_perl_substitutions( \$reps_text );
 
 # Note: don't do rename this until after the substitutions parse.
 # (possibly: on failure, will need to undo this -- TODO)
@@ -146,9 +145,6 @@ eval {
 open my $fout, '>', $input_file or croak "$!";
 print {$fout} $text;
 close($fout);
-
-# TODO move this inside do_finds_and_reps?
-revise_locations( $locations_aref );
 
 # serialize the data to pass to emacs
 my $flat_locs = flatten_locs( $locations_aref );

@@ -50,18 +50,16 @@ our @ISA = qw(Exporter);
 our %EXPORT_TAGS = ( 'all' => [
   qw(
       do_finds_and_reps
+      split_perl_substitutions
       parse_perl_substitutions
       flatten_locs
       revise_locations
 
     ) ] );
-# The above allows declaration	use Emacs::Rep ':all';
-# Moving things directly into @EXPORT or (better) @EXPORT_OK saves some memory.
-our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
-our @EXPORT = qw(  ); # items to export into callers namespace by default.
-                      # (don't use this without a very good reason.)
-our $VERSION = '0.01';
 
+our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
+our @EXPORT = qw(  );
+our $VERSION = '0.01';
 
 =item do_finds_and_reps
 
@@ -114,8 +112,9 @@ The fourth field is the the string that was matched, before
 it was modified.
 
 These changed locations are recorded *during* each pass, which
-means that later passes can mess up the numbering.  We can
-compensate for this later, using the deltas.  See L<revise_locations>.
+means that later passes can mess up the numbering.  We then
+compensate for this internally, using the recorded deltas.
+See L<revise_locations>.
 
 =cut
 
@@ -151,6 +150,7 @@ sub do_finds_and_reps {
     push @locations, \@pass;
     $pass++;
   }
+  revise_locations( \@locations );
   return \@locations; # aref of aref of arefs of pairs
 }
 
@@ -196,12 +196,11 @@ were any -- would need another 6).
 # So: we crunch through the data in reverse order,
 # and record accumulated deltas, keyed by the location to apply
 # them, i.e. to revise the beg  and end points.
-# The size of earlier deltas is untouched, BUT
+# The size of earlier deltas is untouched, but
 # the position the earlier deltas act is the revised position.
 
 sub revise_locations {
   my $locs = shift;
-
   # named array indicies for readability
   my ($BEG, $END, $DELTA, $ORIG ) = 0 .. 3;
   my %delta;
@@ -214,16 +213,14 @@ sub revise_locations {
         if ( $row->[ $END ] >= $spot  ) {
           $row->[ $END ] += $delta{ $spot };
         }
-      }
-    }
-
+      } # end foreach spot
+    } # end foreach row
     foreach my $row ( @{ $pass } ) {
-      { no warnings 'uninitialized';   # TODO trial, giving it it's own for row loop
+      { no warnings 'uninitialized';
         $delta{ $row->[ $END ] } += $row->[ $DELTA ];
       }
-    }
-
-  }
+    } # end foreach row
+  } # end foreach pass
 }
 
 =item flatten_locs
@@ -244,9 +241,11 @@ integers separated by colons, in this order:
 The trailine semi-colon in this format allows it to work on strings
 with embedded newlines, and embedded semi-colons as well.
 However, an embedded semi-colon *with* a following embedded newline
-*must* be backslash escaped.
+*must* be backslash escaped, so this routine just escapes all
+semi-colons.
 
-TODO this isn't done to the "orig" string as of yet.
+TODO move this documentation to some place that talks about it as a
+data interchange format.
 
 =cut
 
@@ -258,7 +257,11 @@ sub flatten_locs {
   foreach my $pass ( @{ $locations } ) {
     foreach my $row ( @{ $pass } ) {
       my ($beg, $end, $delta, $orig) = @{ $row };
-      $ret .= sprintf "%d:%d:%d:%d:%s;\n", $pass_count, $beg, $end, $delta, $orig;
+
+      $orig =~ s{;}{\\}xmsg;
+
+      $ret .= sprintf "%d:%d:%d:%d:%s;\n",
+        $pass_count, $beg, $end, $delta, $orig;
     }
     $pass_count++;
    }
@@ -266,6 +269,44 @@ sub flatten_locs {
 }
 
 
+
+
+=item split_perl_substitutions
+
+Split the text from the perl substitutions buffer up into
+an aref of individual strings, one for each substitution command.
+
+Example usage:
+
+  my $substitutions = split_perl_substitutions( \$substitutions_text );
+
+This routine could *almost* just be replaces with a split on newlines:
+
+   my $s_ref = [ split '\n', $substitutions ];
+
+Except that we'd like to allow for multi-line substitutions.
+
+=cut
+
+# TODO this is a stub that presumes each substitution is on
+# one line.  Modify it to allow multi-line s///.
+#
+# The theory is that this could be beefed up to
+# split up any number of s/// commands, ideally
+# using something like
+#   qr{ s([^:alnum:\s]) .*?  \1 [xmisoge]* ;? }
+
+# Even better though, would be to directly integrate
+# this task with parse_perl_substitutions.
+# Currently this routine is only called from there.
+
+sub split_perl_substitutions {
+  my $text_ref = shift;
+
+  my $s_ref = [ split '\n', ${ $text_ref } ];
+
+  return $s_ref;
+}
 
 =item parse_perl_substitutions
 
@@ -279,9 +320,9 @@ End of line comments beginning with a "#" are allowed.
 just ignored).
 
 Currently, this does not support the bracket form of
-substitution commands, e.g. s{}{};    TODO
+substitution commands, e.g. s{}{};
 
-Example usage:
+Example usage:  ### TODO revise this, now it takes text ref, not aref.
 
 my $substitutions =
   [ 's/pointy-haired boss/esteemed leader/',
@@ -298,65 +339,69 @@ Where the returned data should look like:
 =cut
 
 sub parse_perl_substitutions {
-  my $substitutions = shift;
-
-  # and how do you handle the s{}{} form?
-  # What's the Right Way?  (B::* modules? Text::Balanced?)
-  # TO START WITH: just limit the forms it can handle,
-  # and document.  s/// and maybe s{}{} later.
+  my $reps_text_ref = shift;
+  my $substitutions = split_perl_substitutions( $reps_text_ref );
 
   my @find_reps;
 
-  # TODO
-  # loads $1 with either / or {: use to choose a particular scraper(?)
+  # TODO something like this could be used to choose a scraper
+  # depending on whether s/// or s{}{} style is in use.
+  # It loads $1 with either / or {
   my $s_type_pat =
     qr{
         ^
         \s*
         s
-        ( [/{] )    # }, cperl-mode confused again
+        ( [/{] )                                     # }
     }x;
 
-# perlop: "any non-alphanumeric, non-whitespace" delimiter may be used:
+  # The following scraper pattern should parse substitutions
+  # of the form s///, and the usual variants, e.g. s###ims
+  # See notes following the pattern.
 
-#  perlop:
-#              If the PATTERN is delimited by bracketing quotes,
-#              the REPLACEMENT has its own pair of quotes, which
-#              may or may not be bracketing quotes, e.g.,
-#              ""s(foo)(bar)"" or ""s<foo>/bar/"".
-#
-#              the four sorts of brackets (round, angle, square,
-#              curly) will all nest  ((?))
-
-# Need recursive regexps to support.  Maybe Text::Balanced easier?
-# ((actually... Text::Balanced is really painful.))
-
+  # TODO this is currently pinned using ^$ without the /ms modifiers.
+  # but I want to scrape multi-line strings...
   my $scraper_pat_1 =
     qr{
        ^
        \s*
        s
-       ( [^[:alnum:]\s] ) # allowed separators
-#       ( [/|^] )    # allowed separators
-       ( (?: [^ \1 \\ ] | \\ \1 | \\ .  | \s ) *? ) # allows quoted seps, see Friedl, "Matching Delimited Text" (TODO "unroll"?)
+       ( [^[:alnum:]\s(){}<>\[\]] ) # allowed separators:
+                                    # not alpha-num or whitespace or brackets
+       ( (?: [^ \1 \\ ] | \\ \1 | \\ .  | \s ) *? )
        \1
        ( (?: [^ \1 \\ ] | \\ \1 | \s ) *? )
        \1
-       ( [xmsige]*? ) # note: not a sep. we allow "ge", though they're no-ops
-       .*
+       ( [xmsige]*? ) # we allow "ge", though g is always on and e is ignored
+       .*   # ignore anything following close of s///
        $
       }x;
-  # Starting with one of Friedl's designs, I've started tweaking it to get it
-  # to work.  I can't imagine why I need to add a "\s" to get it to see spaces:
-  # The first alt is anything that's not a sep or a backwhack: how does that not do spaces?
-  # On the other hand "\\." makes sense to pass a "\b", but then why special handling of
-  # "\\ \1"?
 
-#   my $s_ref = [ split '\n', $substitutions ]; # already done in the script (for now)
-   my $s_ref = $substitutions;
+  # Notes: we use some of the usual tricks for allowing backslash escapes
+  # of the separators, see Friedl, "Matching Delimited Text".
+  # I'm not using his "unrolled" form, because I think it's poor for
+  # maintainability
+  #
+  # I don't claim to understand why some of the tweaks above
+  # were needed to get it to work:
+  #
+  # o   The "\s" alternation allows it to see spaces, but the
+  #     first alternation is anything that's not a separator or a backwhack:
+  #     how does that *not* do spaces?
 
+  #  o  The "\\." makes sense to pass something like a "\b",
+  #     but then why is there any need for special handling of
+  #     escaped separators: "\\ \1"   (( TODO is there? check again. ))
+
+   my $s_ref = $substitutions;  # aref, one substitution string in each
+
+  my $comment_pat = qr{ ^ \s*? \# }xms;
+
+ LINE:
   foreach my $s ( @{ $s_ref } ) {
-    if ( $s =~ m{ $scraper_pat_1 }x ) {
+    if ($s =~ m{ $comment_pat }xms ) {
+      next LINE;
+    } elsif ( $s =~ m{ $scraper_pat_1 }x ) {
       my $find = $2;
       my $rep  = $3;
       my $raw_mods = $4;
@@ -376,19 +421,13 @@ sub parse_perl_substitutions {
       push @find_reps, [ $find, $rep ];
 
     } else {
-#      print STDERR "Problem parsing, skipping: $s\n";  # TODO when live, should *croak*.
-                                                        # And maybe: make stack of changes atomic.
-#      Why is STDERR getting mixed in with return from shell-commmand-to-string?
+      croak "Problem parsing: $s";
+      # TODO Make sure the stack of changes atomic.
+      #      revert to original state if there's a problem.
     }
   }
   \@find_reps;
 }
-
-
-
-
-
-
 
 1;
 
@@ -396,13 +435,24 @@ sub parse_perl_substitutions {
 
 =head1 SEE ALSO
 
-TODO Mention other useful documentation:
+This is the back-end for the script rep.pl which in turn
+is the back-end for the emacs lisp code rep.el.
 
-  o  related modules:  L<Module::Name>
-  o  operating system documentation (such as man pages in UNIX)
-  o  any relevant external documentation such as RFCs or standards
-  o  discussion forum set up for your module (if you have it)
-  o  web site set up for your module (if you have it)
+If rep.el is not installed, look in the "elisp" sub-directory
+of this CPAN package.
+
+A good discussion forum for projects such as this is:
+
+  http://groups.google.com/group/emacs-perl-intersection
+
+Web pages related to this can be found at:
+
+  http://obsidianrook.com/p5s
+
+The code is available on github:
+
+  http://github.com/doomvox/substitutions
+
 
 =head1 AUTHOR
 

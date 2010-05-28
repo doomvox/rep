@@ -466,38 +466,15 @@ there, tries to advance the cursor to the next change."
     (message orig)
     ))
 
-
-;; TODO a good first cut, but it gets confused by cascading changes,
-;; i.e. when a LH matched a preceeding RH.
-;; Also attach the delta as a property, so you can detect whether you're looking
-;; at the whole range?  (( Done: length)) Possibly, stash more change information,
-;; original values in a stack (( Done ))
-;; maybe plus extents, so you know what was done to each char...
-;;
-;;   rep-length-of-replacement
-;;   rep-change-stack
-
-;; TODO close, but not *quite* working right.  Undoing a single
-;; change more or less works, but if it overlaps a previous change,
-;; it doesn't fix-up the ranges of text properties to the previous
-;; change when it does do an undo.
-
-;; (How would you?  Might have to apply each pass, then return info
-;; to emacs, so the stack can have the markedup version of the text
-;; to pop off... eh.)
-
-;; Maybe: apply the info again from scratch, with the exception of
-;; the individual change that was undone?  pass beg & end uniquely
-;; specifies.
-
 (defun rep-undo-change-here (&optional dryrun)
   "Undos the individual change near the cursor to it's original form.
-Undos the change at point, or if none is there, the next change afterwards.
-With prefix argument (or DRYRUN option), will show extent to be reverted
-without performing the change.  Note that this has nothing to do with
-the usual emacs \"undo\" system, which operates completely independantly.
-Limitation: this has trouble with text that was modified by
-multiple passes of substitution commands, in which case it can
+Undos the change at point, or if none is there, the next change
+afterwards.  With prefix argument (or DRYRUN option), will show
+extent to be reverted without performing the change.  Note that
+this has nothing to do with the usual emacs \"undo\" system,
+which operates completely independantly.  Limitation: this can be
+confused by casacading, overlapping changes.  When the text was
+modified by multiple passes of substitution commands it can
 typically only undo the latest change. A warning message is
 generated if it can not undo a particular change."
   (interactive "P")
