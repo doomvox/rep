@@ -230,15 +230,23 @@ sub revise_locations {
 
 Serialize the locations data structure for emacs comprehension.
 
-Note: need to preserve "pass" information to colorize each one
-differently.
+There's a need to preserve "pass" numbering to colorize the
+changes from each substitution differently.
 
-We pass on the delta info just because it is there.
+We pass on the delta info on the theory a use may be found for
+it on the other side in emacs land (and it has!).
 
 The result is a block of text, where each line has four
 integers separated by colons, in this order:
 
-  <pass>:<beg>:<end>:<delta>:<orig>
+  <pass>:<beg>:<end>:<delta>:<orig>;
+
+The trailine semi-colon in this format allows it to work on strings
+with embedded newlines, and embedded semi-colons as well.
+However, an embedded semi-colon *with* a following embedded newline
+*must* be backslash escaped.
+
+TODO this isn't done to the "orig" string as of yet.
 
 =cut
 
@@ -250,7 +258,7 @@ sub flatten_locs {
   foreach my $pass ( @{ $locations } ) {
     foreach my $row ( @{ $pass } ) {
       my ($beg, $end, $delta, $orig) = @{ $row };
-      $ret .= sprintf "%d:%d:%d:%d:%s\n", $pass_count, $beg, $end, $delta, $orig;
+      $ret .= sprintf "%d:%d:%d:%d:%s;\n", $pass_count, $beg, $end, $delta, $orig;
     }
     $pass_count++;
    }
@@ -321,6 +329,7 @@ sub parse_perl_substitutions {
 #              curly) will all nest  ((?))
 
 # Need recursive regexps to support.  Maybe Text::Balanced easier?
+# ((actually... Text::Balanced is really painful.))
 
   my $scraper_pat_1 =
     qr{

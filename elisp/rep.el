@@ -40,6 +40,11 @@
 ;;;;  User Options, Variables
 ;;;;##########################################################################
 
+(defvar rep-substitutions-changes-data ()
+  "Data describing substitution changes made to a file. A buffer local variable.")
+(make-variable-buffer-local 'rep-substitutions-changes-data)
+(put 'rep-substitutions-changes-data 'risky-local-variable t)
+
 ;; TODO research how flyspell mode works.
 ;;      research overlays
 ;;      review macros again (sigh)
@@ -61,7 +66,6 @@
 (set-face-underline-p 'rep-changed-face "green")
 ;;  Docs: If UNDERLINE is a string, underline with the color named UNDERLINE.
 
-
 ;; TODO get :underline to work at this stage?
 ;; (defmacro rep-make-face (name number color1 color2)
 ;;   `(defface ,name
@@ -80,7 +84,6 @@
 ;;   :group 'rep-faces
 ;;   ))
 
-
 (defmacro rep-make-face (name number color1 color2)
   `(defface ,name
   '((((class color)
@@ -92,7 +95,6 @@
   ,(format "Face used for changes from substitution number: %s." number)
   :group 'desktop-recover-faces
   ))
-
 
 ;; TODO apply underline to these, too?
 
@@ -204,15 +206,11 @@ Looks good."
   "Two buffers must be open, the changes_list and the file to act on,
 with the changes_list selected.
 Uses the pass number to choose fonts to mark-up changes.
-Turns off font-lock to avoid conflict with existing syntax coloring.
-"
+Turns off font-lock to avoid conflict with existing syntax coloring."
   (interactive)
   (let* (
           pass perl-rep-cmd data
           substitution-lines
-         ( bak-extension "bak" )  ;; TODO choose unique extension, push info onto a buffer-local stack
-;;         ( rep-pl "rep.pl" )    ;; TODO sort out path problem
-         ( rep-pl "/home/doom/End/Cave/Rep/Wall/Emacs-Rep/scripts/rep.pl")
 
           (changes-list-file    (buffer-file-name))
           (changes-list-buffer  (current-buffer))
@@ -223,71 +221,112 @@ Turns off font-lock to avoid conflict with existing syntax coloring.
          (setq target-file          (buffer-file-name))
          (setq target-file-buffer   (current-buffer))
 
-         (setq perl-rep-cmd
+         (setq data
+               (rep-apply-perl-substitutions changes-list-file target-file))
+
+         (rep-markup-target-buffer data target-file-buffer)
+         (rep-markup-lines changes-list-buffer)
+         ))
+
+(defun rep-apply-perl-substitutions ( changes-list-file target-file )
+  "Applies substitutions in a CHANGES-LIST-FILE to a TARGET-FILE.
+The CHANGES-LIST-FILE should contain substitutions in the traditional
+unix 's///' style \(perl5 flavor\), one on each line.  The changes
+are made throughout the TARGET-FILE as though the /g modifier was
+used on all of them.  The original file is saved under a back-up file,
+with extension choosed by the function (( TODO -- for now, it's always bak ))."
+  (let* (
+         (bak-extension "bak" )  ;; TODO choose unique extension, push info onto a buffer-local stack
+;;         ( rep-pl "rep.pl" )    ;; TODO sort out this path problem
+         (rep-pl "/home/doom/End/Cave/Rep/Wall/Emacs-Rep/scripts/rep.pl")
+
+         (perl-rep-cmd
                (format
                 "perl %s --extension %s --substitutions %s %s "
                 rep-pl
                 bak-extension
                 changes-list-file
                 target-file))
-         (setq data (shell-command-to-string perl-rep-cmd))
+         (data (shell-command-to-string perl-rep-cmd))
+         )
+    data))
 
-         (set-buffer target-file-buffer)
-         (revert-buffer t t t) ;;last option: "preserve-modes" what does it do?
-         (font-lock-mode -1)
+(defun rep-markup-target-buffer (data target-file-buffer)
+  "Applies the given change DATA to the TARGET-FILE-BUFFER.
+Highlights the changes using different color faces."
 
-         ;; TODO Doesn't allow multi-line 'orig'.
-         ;;   need semi-colons (and escaped ones) on this data format?
-         ;; split data into lines
-         (setq substitution-lines (split-string data "\n" t))
-         (dolist (line  substitution-lines)
-           (cond ((not (string-equal "" line)) ;; skip blank lines
-                  ;; split each line into five fields
-                  (let* (
-                         (fields (rep-split-limited ":" line 5) )
-                          (pass   (string-to-number (nth 0 fields)))
-                          (beg    (string-to-number (nth 1 fields)))
-                          (end    (string-to-number (nth 2 fields)))
-                          (delta  (string-to-number (nth 3 fields))) ;; unused?
-                          (orig   (nth 4 fields))
-                          (markup-face (rep-lookup-markup-face pass))
-                          )
-                    (put-text-property beg end 'face markup-face target-file-buffer)
-                    (put-text-property beg end 'rep-original-replaced-string orig target-file-buffer)
-                    ))))
-         (rep-markup-lines changes-list-buffer)
-         ))
+  (set-buffer target-file-buffer)
+  (revert-buffer t t t) ;;last option: "preserve-modes" what does it do?
+  (font-lock-mode -1)
+
+  ;; make the same data available to other routines via this buffer-local var.
+  (setq rep-substitutions-changes-data data)
+
+  ;; TODO Doesn't allow multi-line 'orig'.
+  ;;   need semi-colons (and escaped ones) on this data format?
+  ;; split data into lines
+
+  ;; (setq substitution-lines (split-string data "\n" t))
+  (setq substitution-lines (rep-split-on-semicolon-delimited-lines data))
+
+  (dolist (line  substitution-lines)
+    (cond ((not (string-equal "" line)) ;; skip blank lines
+           ;; split each line into five fields
+           (let* (
+                  (fields (rep-split-limited ":" line 5) )
+                  (pass   (string-to-number (nth 0 fields)))
+                  (beg    (string-to-number (nth 1 fields)))
+                  (end    (string-to-number (nth 2 fields)))
+                  (delta  (string-to-number (nth 3 fields)))
+                  (orig   (nth 4 fields))
+                  (markup-face (rep-lookup-markup-face pass))
+                  (len    (+ (length orig) delta) )
+                  ;; initialize with the existing stack
+                  (stack
+                   (get-text-property beg 'rep-change-stack target-file-buffer))
+                  )
+             (put-text-property beg end 'face markup-face target-file-buffer)
+             (put-text-property beg end 'rep-replaced-string orig target-file-buffer)
+             (put-text-property beg end 'rep-length-of-replacement len target-file-buffer)
+
+;;             (push orig stack)
+             (push fields stack) ;; experiment
+             ;; save stack off as text property
+             (put-text-property beg end 'rep-change-stack stack target-file-buffer)
+
+             )))))
 
 (defun rep-markup-lines (buffer)
   "Mark-up the lines in the given BUFFER.
-Leaves the current window active."
+Uses the line number with rep-lookup-markup-face to assign a color.
+Acts on the given BUFFER, but leaves the current window active."
   (save-excursion ;; but that trick *never* works... so don't trust it
     (let* ( (original-buffer (current-buffer))
             line-number markup-face
             (lines-left 1)
-                         )
-    (set-buffer buffer)
-    (font-lock-mode -1)
-    (goto-char (point-min))
-    (setq line-number 0)
-    (while lines-left
-          (setq markup-face (rep-lookup-markup-face line-number))
-          (let* ( (beg (point))
-                  end )
-            (move-end-of-line 1)
-            (setq end (point))
-            (put-text-property beg end 'face markup-face)
             )
-          (setq line-number (1+ line-number))
-          (setq lines-left (= 0 (forward-line 1)))
+      (set-buffer buffer)
+      (font-lock-mode -1)
+      (goto-char (point-min))
+      (setq line-number 0)
+      (while lines-left
+        (setq markup-face (rep-lookup-markup-face line-number))
+        (let* ( (beg (point))
+                end )
+          (move-end-of-line 1)
+          (setq end (point))
+          (put-text-property beg end 'face markup-face)
           )
-    (set-buffer original-buffer)
-    )
+        (setq line-number (1+ line-number))
+        (setq lines-left (= 0 (forward-line 1)))
+        )
+      (set-buffer original-buffer)
+      )
     ))
 
 
 ;; TODO a bit hacky having this routine apply underlining.
-;; work on the defmacro defface (sigh)
+;; work on the defmacro defface more (sigh)
 (defun rep-lookup-markup-face (pass)
   "Given an integer PASS, returns an appropriate face from \[[rep-face-alist]].
 These faces are named rep-NN-face where NN is a two-digit integer.
@@ -296,23 +335,24 @@ routine will wrap around and begin reusing the low-numbered fonts.
 As a side effect, this function makes the face underlined in red."
   (interactive "npick a number: ") ;; DEBUG
   (let ( markup-face limit index )
-;;    (setq pass (+ pass 12))
     (setq limit (length rep-face-alist) )
     (setq index (mod pass limit))
     (setq markup-face (cdr (assoc index rep-face-alist)))
     (message (pp-to-string markup-face))
+;; TODO are there emacs bugs with underlines?
 ;;    (set-face-underline-p markup-face t)
-    (set-face-underline-p markup-face "red")  ;; question: need light/dark?
+;;    (set-face-underline-p markup-face "red")  ;; question: need light/dark?
     markup-face
     ))
 
 
-
-
+;; TODO but dired has something even closer to perl's split (can use a regexp):
+;;  (dired-split PAT STR &optional LIMIT)
 (defun rep-split-limited (delimiter line limit)
   "Split LINE on DELIMITER into no more than LIMIT fields.
 This is something like perl's limit feature on splits.
-Using this additional, superfluous delimiters are allowed in the final field.
+Using this function additional, superfluous delimiters are
+allowed in the final field.
 Example:
  (rep-split-limited \":\" \"hey:ho:lets:go:gabba:gabba:hey\" 5)
  (\"hey\" \"ho\" \"lets\" \"go\" \"gabba:gabba:hey\")
@@ -330,21 +370,76 @@ Example:
     (nreverse new-list)
     ))
 
+(defun rep-split-on-semicolon-delimited-lines-cheesy ( text )
+  "Splits text on line-endings with semi-colons.
+Using a combination of a semi-colon and a newline as the
+end of a record, let's you do \"lines\" which contain
+embedded newlines and/or semi-colons... but not both together."
+  (require 'dired-aux)
+  (let* ((pat ";\s*\n")
+         (lines (dired-split pat text))
+         (tail  (car (last lines 1)))
+         )
+    (cond ((string= tail "")
+           (setq lines (butlast lines 1))
+           ))
+    lines))
+
+(defun rep-split-on-semicolon-delimited-lines ( text )
+  "Splits text on line-endings with semi-colons.
+This allows for \"lines\" with embedded newlines, but any
+embedded semi-colons are expected to be escaped with a backslash.
+The escaping backslashes are removed."
+  (let* (
+        ;; match a semicolon not preceeded by backwhack, at eol
+        ;; captures all to 1.  Note, this eats a preceeding char that
+        ;; isn't part of the end of line.
+        (pat "\\([^\\\\];\s*$\\)")
+        (fin (length text))
+        (beg  0) ;; start of next line, a cursor sweeping through text
+        (lines ())
+        end
+        )
+    (while (< beg fin)
+      (let* ( ;; skip -- unused now.  TODO DELETE skip usages
+              ;; look for location with expected line ending...
+             (loc (string-match pat text beg)) )
+        (cond (loc ;; if that's found, we've found end of next record
+               (setq end (1+ loc ))
+               ;; (setq skip (length (match-string 1 text)))
+               )
+              (t ;; loc is nil, so we're near end of text
+               (setq end fin)
+               ;; (setq skip 0) ;; being neat
+               ))
+        (setq line (substring text beg end))
+        (setq line
+              (replace-regexp-in-string "\\\\" "" line))
+        (push line lines)
+
+;;         (setq beg (+ end skip)) ;; skipping past line ending
+        (setq beg (string-match "^" text end)) ;; more portable?
+        ))
+    (setq lines (nreverse lines))
+    lines))
 
 ;; TODO eventually need something that reads the most recent revert
 ;; file off of a buffer-local stack
 (defun rep-revert-all-changes ()
   "Revert to the *.bak file."
   (interactive)
-  (let* ( (bfn1 (buffer-file-name))
-          (cb1  (current-buffer))
-          (bak-file (concat bfn1 ".bak"))
+  (let* ( (bfn (buffer-file-name))
+          (cb  (current-buffer))
+          (bak-file (concat bfn ".bak"))
                )
-
-    (copy-file bak-file bfn1 t)
+    (copy-file bak-file bfn t)
     (revert-buffer t t)
-    ))
 
+    ;; covering flakiness in revert-buffer & text properties.
+    (font-lock-fontify-buffer)
+    (put-text-property (point-min) (point-max) 'rep-replaced-string "" cb)
+    (put-text-property (point-min) (point-max) 'rep-change-stack () cb)
+    ))
 
 ;;
 (defun rep-message-properties-at-point ()
@@ -362,10 +457,10 @@ Example:
 Looks at the changed string under the cursor, or if not defined
 there, tries to advance the cursor to the next change."
   (interactive)
-  (let* ( (orig (get-text-property (point) 'rep-original-replaced-string)) )
+  (let* ( (orig (get-text-property (point) 'rep-replaced-string)) )
     (unless orig
-      (let ( (spot (next-single-property-change (point) 'rep-original-replaced-string)) )
-        (setq orig (get-text-property spot 'rep-original-replaced-string))
+      (let ( (spot (next-single-property-change (point) 'rep-replaced-string)) )
+        (setq orig (get-text-property spot 'rep-replaced-string))
         (goto-char spot)
         ))
     (message orig)
@@ -374,46 +469,103 @@ there, tries to advance the cursor to the next change."
 
 ;; TODO a good first cut, but it gets confused by cascading changes,
 ;; i.e. when a LH matched a preceeding RH.
-;; also attach the delta as a property, so you can detect whether you're looking
-;; at the whole range?  Possibly, stash more change information, original
-;; values plus extents, in a stack, so you know what was done to each char...
-(defun rep-revert-change-here (&optional dryrun)
-  "Reverts the individual change near the cursor to it's original form.
+;; Also attach the delta as a property, so you can detect whether you're looking
+;; at the whole range?  (( Done: length)) Possibly, stash more change information,
+;; original values in a stack (( Done ))
+;; maybe plus extents, so you know what was done to each char...
+;;
+;;   rep-length-of-replacement
+;;   rep-change-stack
+
+;; TODO close, but not *quite* working right.  Undoing a single
+;; change more or less works, but if it overlaps a previous change,
+;; it doesn't fix-up the ranges of text properties to the previous
+;; change when it does do an undo.
+
+;; (How would you?  Might have to apply each pass, then return info
+;; to emacs, so the stack can have the markedup version of the text
+;; to pop off... eh.)
+
+;; Maybe: apply the info again from scratch, with the exception of
+;; the individual change that was undone?  pass beg & end uniquely
+;; specifies.
+
+(defun rep-undo-change-here (&optional dryrun)
+  "Undos the individual change near the cursor to it's original form.
+Undos the change at point, or if none is there, the next change afterwards.
 With prefix argument (or DRYRUN option), will show extent to be reverted
-without performing the change."
+without performing the change.  Note that this has nothing to do with
+the usual emacs \"undo\" system, which operates completely independantly.
+Limitation: this has trouble with text that was modified by
+multiple passes of substitution commands, in which case it can
+typically only undo the latest change. A warning message is
+generated if it can not undo a particular change."
   (interactive "P")
-  (let* ( (orig (get-text-property (point) 'rep-original-replaced-string))
-          beg end
+;; Start out with the theory that the cursor is inside of the region to undo,
+;; otherwise, must search forward for the next changed region.
+  (let* ( (orig (get-text-property (point) 'rep-replaced-string))
+          (len  (get-text-property (point) 'rep-length-of-replacement))
+          beg end current-string stack
           )
     (cond ((not orig)
-            (setq beg  (next-single-property-change (point) 'rep-original-replaced-string))
-            (setq end  (next-single-property-change beg     'rep-original-replaced-string))
-            (setq orig (get-text-property beg 'rep-original-replaced-string))
+            (setq beg
+                  (next-single-property-change (point) 'rep-replaced-string))
+            (setq end
+                  (next-single-property-change beg     'rep-replaced-string))
+            (setq orig (get-text-property beg 'rep-replaced-string))
+            (setq len  (get-text-property beg 'rep-length-of-replacement))
           )
           (t
-           (setq beg (previous-single-property-change (point) 'rep-original-replaced-string))
-           (setq end (next-single-property-change (point) 'rep-original-replaced-string))
+           (setq beg
+                 (previous-single-property-change (point) 'rep-replaced-string))
+           (setq end
+                 (next-single-property-change (point) 'rep-replaced-string))
            ))
-    (cond (dryrun
-           (goto-char beg)
-           (set-mark beg)
-           (goto-char end)
-           (exchange-point-and-mark)
-           )
+
+    (cond ((and beg end len orig)
+
+           (setq stack (get-text-property beg 'rep-change-stack))
+           (setq current-string (buffer-substring-no-properties beg end))
+
+           (cond (dryrun
+                  (goto-char beg)
+                  (set-mark beg)
+                  (goto-char end)
+                  (exchange-point-and-mark)
+                  )
+                 ((not (= len (- end beg)))
+                  (message "Can't revert fragment: %s." current-string)
+                  )
+                 (t
+                  (kill-region beg end)
+                  (insert orig)
+
+                  (let* ((adjusted-end (+ end (- len (length orig)))))
+                    (pop stack)
+                    (put-text-property beg adjusted-end 'rep-change-stack stack)
+                    )
+                  (message orig)
+                  )))
           (t
-           (kill-region beg end)
-           (insert orig)
-           (message orig)
-           ))
-  ))
+           (message "There are no changed regions to undo after point.")
+           )
+          )
+    ))
 
 ;;---------
 ;; controlling  modes
 
 
+;; TODO what's the right way to get a binding in all modes,
+;;      or at least any of a list of modes you're interested in?
+;;      (I've researched this before, and ran into problems...)
 ;; default binding to begin it all: C-cS
 (defun rep-define-global-key-binding (&optional prefix)
-  "Defines a global keybinding to open a new substitutions buffer."
+  "Defines a global keybinding to open a new substitutions buffer.
+Defaults to \"Control-C S\".  A different prefix may be given
+as an argument, for example:
+  (rep-define-global-key-binding \"M-o\")
+would define the key-strokes \"Alt o S\"."
   (interactive) ;; DEBUG
   (unless prefix (setq prefix "\C-c"))
   (global-set-key (format "%sS" prefix) 'rep-open-substitutions-buffer)
@@ -423,7 +575,7 @@ without performing the change."
 (defvar rep-default-substitutions-directory "/tmp")
 
 ;; TODO watch out for small windows without room to split.
-;; 10 lines maybe should be percentage if window is a little small.
+;; 10 lines? maybe better, a percentage of the window (or just if it's too small?)
 ;; TODO add local-vars table (or something) so you get the right mode if you
 ;; save and open again.
 ;; TODO this *has* to be saved to a file for rep.pl to work.
@@ -449,7 +601,7 @@ without performing the change."
   (use-local-map rep-substitutions-mode-map)
   )
 
-(define-key rep-substitutions-mode-map "\M-\C-m" 'rep-do-these-changes-other-window)
+(define-key rep-substitutions-mode-map "\C-x#" 'rep-do-these-changes-other-window)
 ;; TODO fill in any other bindings:
 ;; (define-key rep-substitutions-mode-map "\C-m" 'rep-substitutions-do-it)
 
