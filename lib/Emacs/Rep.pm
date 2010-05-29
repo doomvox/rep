@@ -447,11 +447,11 @@ A good discussion forum for projects such as this is:
 
 Web pages related to this can be found at:
 
-  http://obsidianrook.com/p5s
+  http://obsidianrook.com/rep
 
 The code is available on github:
 
-  http://github.com/doomvox/substitutions
+  http://github.com/doomvox/rep
 
 
 =head1 AUTHOR

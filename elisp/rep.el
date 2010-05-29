@@ -25,6 +25,11 @@
 
 ;;
 
+
+;; TODO research how flyspell mode works.
+;;      research overlays
+;;      review macros again (sigh)
+
 ;; Put this file into your load-path and the following into your ~/.emacs:
 ;;   (require 'rep)
 
@@ -36,53 +41,22 @@
 
 
 
-;;;;##########################################################################
-;;;;  User Options, Variables
-;;;;##########################################################################
+
+;;---------
+;;  User Options, Variables
 
 (defvar rep-substitutions-changes-data ()
   "Data describing substitution changes made to a file. A buffer local variable.")
 (make-variable-buffer-local 'rep-substitutions-changes-data)
 (put 'rep-substitutions-changes-data 'risky-local-variable t)
 
-;; TODO research how flyspell mode works.
-;;      research overlays
-;;      review macros again (sigh)
 
-;; TODO DELETE eventually
-;; Basic face definition used during development.
-(defface rep-changed-face
-  '((((class color)
-      (background light))
-     (:foreground "DarkGoldenrod4"))
-    (((class color)
-      (background dark))
-     (:foreground "DarkGoldenrod2")))
-  "Face used for indicating a change made by rep.el"
-  :group 'desktop-recover-faces)
+;; TODO Add setting to
+;; ~/End/Cave/Rep/Wall/Emacs-Rep/elisp/examples/rep-setup.el
+(defvar rep-default-substitutions-directory "/tmp")
 
-
-;; (set-face-underline-p 'rep-changed-face t)
-(set-face-underline-p 'rep-changed-face "green")
-;;  Docs: If UNDERLINE is a string, underline with the color named UNDERLINE.
-
-;; TODO get :underline to work at this stage?
-;; (defmacro rep-make-face (name number color1 color2)
-;;   `(defface ,name
-;;   '((((class color)
-;;       (background light))
-;;      (:foreground ,color1)
-;;       (:underline  ,color1)
-;;      )
-;;     (((class color)
-;;       (background dark)
-;;       (:foreground ,color2)
-;;       (:underline  ,color2)
-;;       )
-;;      ))
-;;   ,(format "Face used for to indicate changes from substitution number: %s." number)
-;;   :group 'rep-faces
-;;   ))
+;;--------
+;; generating colorized faces used to mark-up changes
 
 (defmacro rep-make-face (name number color1 color2)
   `(defface ,name
@@ -95,8 +69,6 @@
   ,(format "Face used for changes from substitution number: %s." number)
   :group 'desktop-recover-faces
   ))
-
-;; TODO apply underline to these, too?
 
 (rep-make-face rep-00-face 00 "PaleVioletRed4" "PaleVioletRed1")
 (rep-make-face rep-01-face 01 "DarkGoldenrod4" "DarkGoldenrod2")
@@ -134,8 +106,10 @@
 (rep-make-face rep-33-face 33 "PeachPuff4" "PeachPuff1")
 
 (defvar rep-face-alist ()
- "Faces keyed by number (an integer to font association).")
-;; hardcoded generation of look-up table (stupid, I know, but simple)
+ "Faces keyed by number (an integer to font association).
+Used by function \\[rep-lookup-markup-face].")
+;; hardcoded generation of look-up table (stupid, but simple)
+;; TODO modify the rep-make-face macro to generate this table?
 (setq rep-face-alist
       '(
         (00 . rep-00-face)
@@ -174,61 +148,11 @@
         (33 . rep-33-face)
         ))
 
-;; We then look-up a font like so:
-;;  (cdr (assoc 1 rep-face-alist))
+;;--------
+;; functions used by commands below
 
-;; Indirect lookup using number in variable
-;;   (setq rep-change-numb 3)
-;;   (cdr (assoc rep-change-numb rep-face-alist))
-
-;; DEBUG
-(defun rep-change-face-region-by-numb (beg end)
-  "Just making sure there's no trouble with face lookup given
-a change number."
-  (interactive "r")
-  (let* ( (rep-change-numb 15)
-         (this-change-face (cdr (assoc rep-change-numb rep-face-alist)))
-         )
-    (put-text-property beg end
-                       'face this-change-face
-                       (current-buffer))))
-
-;; DEBUG
-(defun rep-change-face-region (beg end)
-  "Just making sure there's no trouble with my face.
-Looks good."
-  (interactive "r")
-  (put-text-property beg end
-                     'face 'rep-changed-face
-                     (current-buffer)))
-
-(defun rep-do-these-changes-other-window ()
-  "Two buffers must be open, the changes_list and the file to act on,
-with the changes_list selected.
-Uses the pass number to choose fonts to mark-up changes.
-Turns off font-lock to avoid conflict with existing syntax coloring."
-  (interactive)
-  (let* (
-          pass perl-rep-cmd data
-          substitution-lines
-
-          (changes-list-file    (buffer-file-name))
-          (changes-list-buffer  (current-buffer))
-
-          target-file target-file-buffer
-         )
-         (other-window 1)
-         (setq target-file          (buffer-file-name))
-         (setq target-file-buffer   (current-buffer))
-
-         (setq data
-               (rep-apply-perl-substitutions changes-list-file target-file))
-
-         (rep-markup-target-buffer data target-file-buffer)
-         (rep-markup-lines changes-list-buffer)
-         ))
-
-(defun rep-apply-perl-substitutions ( changes-list-file target-file )
+;; Used by rep-substitutions-apply-to-other-window
+(defun rep-run-perl-substitutions ( changes-list-file target-file )
   "Applies substitutions in a CHANGES-LIST-FILE to a TARGET-FILE.
 The CHANGES-LIST-FILE should contain substitutions in the traditional
 unix 's///' style \(perl5 flavor\), one on each line.  The changes
@@ -251,6 +175,7 @@ with extension choosed by the function (( TODO -- for now, it's always bak ))."
          )
     data))
 
+;; Used by rep-substitutions-apply-to-other-window
 (defun rep-markup-target-buffer (data target-file-buffer)
   "Applies the given change DATA to the TARGET-FILE-BUFFER.
 Highlights the changes using different color faces."
@@ -258,15 +183,12 @@ Highlights the changes using different color faces."
   (set-buffer target-file-buffer)
   (revert-buffer t t t) ;;last option: "preserve-modes" what does it do?
   (font-lock-mode -1)
+  (rep-modified-mode t)
 
   ;; make the same data available to other routines via this buffer-local var.
   (setq rep-substitutions-changes-data data)
 
-  ;; TODO Doesn't allow multi-line 'orig'.
-  ;;   need semi-colons (and escaped ones) on this data format?
-  ;; split data into lines
-
-  ;; (setq substitution-lines (split-string data "\n" t))
+  ;; TODO does this deal with multi-line strings?
   (setq substitution-lines (rep-split-on-semicolon-delimited-lines data))
 
   (dolist (line  substitution-lines)
@@ -289,13 +211,16 @@ Highlights the changes using different color faces."
              (put-text-property beg end 'rep-replaced-string orig target-file-buffer)
              (put-text-property beg end 'rep-length-of-replacement len target-file-buffer)
 
-;;             (push orig stack)
-             (push fields stack) ;; experiment
+             (push fields stack) ;; experimental structure TODO
              ;; save stack off as text property
              (put-text-property beg end 'rep-change-stack stack target-file-buffer)
 
              )))))
 
+;; TODO would be better if font-lock-mode status were probed and
+;; saved, so that rep-modified-accept-changes can turn it on only if it
+;; were already on.
+;; Used by rep-substitutions-apply-to-other-window
 (defun rep-markup-lines (buffer)
   "Mark-up the lines in the given BUFFER.
 Uses the line number with rep-lookup-markup-face to assign a color.
@@ -324,30 +249,31 @@ Acts on the given BUFFER, but leaves the current window active."
       )
     ))
 
-
-;; TODO a bit hacky having this routine apply underlining.
-;; work on the defmacro defface more (sigh)
+;; TODO This routine can be modified to apply underlining at this
+;; stage (though that's hacky, I know). someday, work out how
+;; add an underline to the defface macro
 (defun rep-lookup-markup-face (pass)
   "Given an integer PASS, returns an appropriate face from \[[rep-face-alist]].
 These faces are named rep-NN-face where NN is a two-digit integer.
 In the event that PASS exceeds the number of such defined faces, this
 routine will wrap around and begin reusing the low-numbered fonts.
 As a side effect, this function makes the face underlined in red."
-  (interactive "npick a number: ") ;; DEBUG
+;;  (interactive "npick a number: ") ;; DEBUG
   (let ( markup-face limit index )
     (setq limit (length rep-face-alist) )
     (setq index (mod pass limit))
     (setq markup-face (cdr (assoc index rep-face-alist)))
     (message (pp-to-string markup-face))
-;; TODO are there emacs bugs with underlines?
+;; TODO not sure there's any point to underlines (I like my colorization now)
 ;;    (set-face-underline-p markup-face t)
 ;;    (set-face-underline-p markup-face "red")  ;; question: need light/dark?
     markup-face
     ))
 
 
-;; TODO but dired has something even closer to perl's split (can use a regexp):
-;;  (dired-split PAT STR &optional LIMIT)
+;; TODO   Instead of writing this, could've used dired's
+;; "dired-split" which is even closer to perl's split (can use a regexp):
+;;   (dired-split PAT STR &optional LIMIT)
 (defun rep-split-limited (delimiter line limit)
   "Split LINE on DELIMITER into no more than LIMIT fields.
 This is something like perl's limit feature on splits.
@@ -369,21 +295,6 @@ Example:
     (push (mapconcat 'identity raw delimiter) new-list)
     (nreverse new-list)
     ))
-
-(defun rep-split-on-semicolon-delimited-lines-cheesy ( text )
-  "Splits text on line-endings with semi-colons.
-Using a combination of a semi-colon and a newline as the
-end of a record, let's you do \"lines\" which contain
-embedded newlines and/or semi-colons... but not both together."
-  (require 'dired-aux)
-  (let* ((pat ";\s*\n")
-         (lines (dired-split pat text))
-         (tail  (car (last lines 1)))
-         )
-    (cond ((string= tail "")
-           (setq lines (butlast lines 1))
-           ))
-    lines))
 
 (defun rep-split-on-semicolon-delimited-lines ( text )
   "Splits text on line-endings with semi-colons.
@@ -423,9 +334,134 @@ The escaping backslashes are removed."
     (setq lines (nreverse lines))
     lines))
 
+;;---------
+;; controlling  modes
+
+;; This systems "controllers" come in three stages:
+;;  (1) a global key binding to create and edit a new substitutions file-buffer.
+;;  (2) a rep-substitutions-mode, with C-x# binding to apply to other window.
+;;  (3) a rep-modified-mode: a minor-mode automatically enabled in that
+;;      other window once it's been modified.  This has keybindings to
+;;      examine, undo, accept or revert the changes.
+
+;; TODO What's the right way to do a binding in all modes,
+;;      or at least any of a list of modes you're interested in?
+;;      (I've researched this before, and ran into problems...)
+;;      What if I created a minor-mode for this? And turned it on
+;;      with an after-mode hook of some sort?
+;; TODO review this choice: default binding to begin it all: C-c.S
+(defun rep-define-global-key-binding (&optional prefix)
+  "Defines a global keybinding to open a new substitutions buffer.
+Defaults to \"Control-c . S\".  A different prefix may be given
+as an argument, for example:
+  (rep-define-global-key-binding \"M-o\")
+would define the key-strokes \"Alt o S\"."
+  (interactive) ;; DEBUG
+  (unless prefix (setq prefix "\C-c."))
+  (global-set-key (format "%sS" prefix) 'rep-open-substitutions-buffer)
+  (message "Defined bindings for key: S under the prefix %s" prefix)
+  )
+
+;; TODO watch out for small windows without room to split.
+;; 10 lines? maybe better, a percentage of the window (or just if it's too small?)
+;; TODO add local-vars table (or something) so you get the right mode if you
+;; save and open again.
+;; TODO this *has* to be saved to a file for rep.pl to work.
+;; TODO add a "file" param to override the default.
+;; TODO by default, should get a unique file
+(defun rep-open-substitutions-buffer ()
+  "Open a new substitutions buffer."
+  (interactive)
+  (let* (( upper-size 10 )
+         ( dir rep-default-substitutions-directory )
+         ( default-buffer-file (concat dir "/" "substitutions.rep") )
+         )
+    (split-window-vertically upper-size)
+    (find-file default-buffer-file)
+    (rep-substitutions-mode)
+    ))
+
+(define-derived-mode rep-substitutions-mode
+  cperl-mode "rep-substitutions"
+  "Major mode to enter stack of substitutions to be applied.
+Derived from cperl-mode, because we're editing substitutions
+that use perl's syntax \(and are interpreted using perl\).
+\\{rep-substitutions-mode-map}"
+  (use-local-map rep-substitutions-mode-map)
+  )
+(define-key rep-substitutions-mode-map "\C-x#"
+  'rep-substitutions-apply-to-other-window)
+
+(define-minor-mode rep-modified-mode
+  "Toggle Rep Modified mode.
+     With no argument, this command toggles the mode.
+     Non-null prefix argument turns on the mode.
+     Null prefix argument turns off the mode.
+
+     When Rep Modified mode is enabled, key bindings are defined
+     to examine and undo the changes made by rep substitutions.
+     These are commands such as
+         \\[rep-modified-what-was-changed-here]
+         \\[rep-revert-change-here]
+         \\[rep-modified-revert-all-changes]    "
+  ;; The initial value.
+  :init-value nil
+  ;; The indicator for the mode line.
+  :lighter " Reppy"
+  ;; The minor mode bindings.
+  :keymap
+  '(
+    ("\C-c.w" . rep-modified-what-was-changed-here)
+    ("\C-c.x" . rep-modified-examine-properties-at-point)
+    ("\C-c.u" . rep-modified-undo-change-here)
+    ("\C-c.R" . rep-modified-revert-all-changes)
+    ("\C-c.@" . rep-modified-accept-changes)
+    ("\C-i"   . rep-modified-skip-to-next-change)
+    )
+  )
+
+
+
+;;--------
+;; rep-substitutions-mode function(s)
+
+(defun rep-substitutions-apply-to-other-window ()
+  "Two buffers must be open, the changes_list and the file to act on,
+with the changes_list selected.
+Uses the pass number to choose fonts to mark-up changes.
+Turns off font-lock to avoid conflict with existing syntax coloring."
+  (interactive)
+  (let* (
+          pass perl-rep-cmd data
+          substitution-lines
+
+          (changes-list-file    (buffer-file-name))
+          (changes-list-buffer  (current-buffer))
+
+          target-file target-file-buffer
+         )
+         (other-window 1) ;; cursor in buffer to modify now
+         (setq target-file          (buffer-file-name))
+         (setq target-file-buffer   (current-buffer))
+
+         (setq data
+               (rep-run-perl-substitutions changes-list-file target-file))
+
+         (rep-markup-target-buffer data target-file-buffer)
+         (rep-markup-lines changes-list-buffer)
+
+         ;; jump to the first change in the modified buffer
+         (goto-char
+          (next-single-property-change
+           (point-min) 'rep-change-stack target-file-buffer))
+         ))
+
+;;--------
+;; rep-modified-mode functions
+
 ;; TODO eventually need something that reads the most recent revert
 ;; file off of a buffer-local stack
-(defun rep-revert-all-changes ()
+(defun rep-modified-revert-all-changes ()
   "Revert to the *.bak file."
   (interactive)
   (let* ( (bfn (buffer-file-name))
@@ -441,19 +477,42 @@ The escaping backslashes are removed."
     (put-text-property (point-min) (point-max) 'rep-change-stack () cb)
     ))
 
-;;
-(defun rep-message-properties-at-point ()
+(defun rep-modified-accept-changes ()
+  "Accept changes made in buffer, return to normal state."
+  (interactive)
+  (rep-modified-mode nil)
+  (font-lock-mode 1)
+  )
+
+;; TODO note that this monitors the rep-change-stack
+;;      older code like this monitors rep-replaced-string
+(defun rep-modified-skip-to-next-change ()
+  "Skip to next region modified by a substitution."
+  (interactive)
+  ;; Check if we're inside a changed region first
+  (let* ( (stack (get-text-property (point) 'rep-change-stack))
+          )
+    (cond (stack  ;;   ;; we are inside a changed region and must get out first
+           (goto-char
+            (1+
+             (next-single-property-change (point) 'rep-change-stack)))
+           ))
+    ;; jump to the next changed region
+    (goto-char
+     (next-single-property-change
+      (point) 'rep-change-stack))
+    ))
+
+(defun rep-modified-examine-properties-at-point ()
   "Tells you what properties you have at point."
   (interactive)
   (let* (capture)
-;;    (goto-char (point-min))
     (setq capture (text-properties-at (point)))
     (message (pp-to-string capture))
-;;    (forward-char 1)
     ))
 
-(defun rep-what-was-changed-here ()
-  "Tells you what the original string was before it was replaced.
+(defun rep-modified-what-was-changed-here ()
+  "Tells you the original string was before it was replaced.
 Looks at the changed string under the cursor, or if not defined
 there, tries to advance the cursor to the next change."
   (interactive)
@@ -466,17 +525,21 @@ there, tries to advance the cursor to the next change."
     (message orig)
     ))
 
-(defun rep-undo-change-here (&optional dryrun)
-  "Undos the individual change near the cursor to it's original form.
+(defun rep-modified-undo-change-here (&optional dryrun)
+  "Undos the individual rep substitution change near the cursor.
 Undos the change at point, or if none is there, the next change
 afterwards.  With prefix argument (or DRYRUN option), will show
-extent to be reverted without performing the change.  Note that
-this has nothing to do with the usual emacs \"undo\" system,
-which operates completely independantly.  Limitation: this can be
-confused by casacading, overlapping changes.  When the text was
-modified by multiple passes of substitution commands it can
-typically only undo the latest change. A warning message is
-generated if it can not undo a particular change."
+extent to be reverted without performing the change.
+
+Note that this has nothing to do with the usual emacs \"undo\"
+system, which operates completely independantly.
+
+Limitation: this can be confused by casacading, overlapping
+changes.  When the text near point was modified by multiple
+passes of substitution commands this can typically only undo the
+last change. A warning message is generated if it can not undo
+a change.
+"
   (interactive "P")
 ;; Start out with the theory that the cursor is inside of the region to undo,
 ;; otherwise, must search forward for the next changed region.
@@ -484,7 +547,7 @@ generated if it can not undo a particular change."
           (len  (get-text-property (point) 'rep-length-of-replacement))
           beg end current-string stack
           )
-    (cond ((not orig)
+    (cond ((not orig) ;; find a changed region
             (setq beg
                   (next-single-property-change (point) 'rep-replaced-string))
             (setq end
@@ -492,7 +555,7 @@ generated if it can not undo a particular change."
             (setq orig (get-text-property beg 'rep-replaced-string))
             (setq len  (get-text-property beg 'rep-length-of-replacement))
           )
-          (t
+          (t         ;; we are inside a changed region
            (setq beg
                  (previous-single-property-change (point) 'rep-replaced-string))
            (setq end
@@ -529,61 +592,7 @@ generated if it can not undo a particular change."
           )
     ))
 
-;;---------
-;; controlling  modes
 
 
-;; TODO what's the right way to get a binding in all modes,
-;;      or at least any of a list of modes you're interested in?
-;;      (I've researched this before, and ran into problems...)
-;; default binding to begin it all: C-cS
-(defun rep-define-global-key-binding (&optional prefix)
-  "Defines a global keybinding to open a new substitutions buffer.
-Defaults to \"Control-C S\".  A different prefix may be given
-as an argument, for example:
-  (rep-define-global-key-binding \"M-o\")
-would define the key-strokes \"Alt o S\"."
-  (interactive) ;; DEBUG
-  (unless prefix (setq prefix "\C-c"))
-  (global-set-key (format "%sS" prefix) 'rep-open-substitutions-buffer)
-  (message "Defined bindings for key: S under the prefix %s" prefix)
-  )
-
-(defvar rep-default-substitutions-directory "/tmp")
-
-;; TODO watch out for small windows without room to split.
-;; 10 lines? maybe better, a percentage of the window (or just if it's too small?)
-;; TODO add local-vars table (or something) so you get the right mode if you
-;; save and open again.
-;; TODO this *has* to be saved to a file for rep.pl to work.
-;; TODO add a "file" param to override the default.
-;; TODO by default, should get a unique file
-(defun rep-open-substitutions-buffer ()
-  "Open a new substitutions buffer."
-  (interactive)
-  (let* (( upper-size 10 )
-         ( dir rep-default-substitutions-directory )
-         ( default-buffer-file (concat dir "/" "substitutions.rep") )
-         )
-    (split-window-vertically upper-size)
-    (find-file default-buffer-file)
-    (rep-substitutions-mode)
-    ))
-
-
-(define-derived-mode rep-substitutions-mode
-  cperl-mode "rep-substitutions"
-  "Major mode to enter stack of substitutions to be applied.
-\\{rep-substitutions-mode-map}"
-  (use-local-map rep-substitutions-mode-map)
-  )
-
-(define-key rep-substitutions-mode-map "\C-x#" 'rep-do-these-changes-other-window)
-;; TODO fill in any other bindings:
-;; (define-key rep-substitutions-mode-map "\C-m" 'rep-substitutions-do-it)
-
-;; rep-what-was-changed-here
-;; rep-revert-change-here
-;; rep-revert-all-changes
 
 ;;; rep.el ends here
