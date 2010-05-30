@@ -21,12 +21,37 @@ To install this module, run the following commands:
 	./Build test
 	./Build install
 
+Additionally, you need to make sure that this file has
+been added to a location in your emacs load-path:
+
+        elisp/rep.el
+
+And as explained at the top of that file:
+
+   Add the following into your ~/.emacs (or equivalent):
+     (require 'rep)
+     (global-set-key "C-c.S" 'rep-open-substitutions)
+
 SUPPORT AND DOCUMENTATION
 
-After installing, you can find documentation for this module with the
-perldoc command.
+User documentation can be found in the comments at the
+top of:
+
+   elisp/rep.el
+
+Web pages related to this can be found at:
+  http://obsidianrook.com/rep
+
+After installing, you can find documentation for this module with
+the perldoc command.
 
     perldoc Emacs::Rep
+
+A good discussion forum for projects such as this is:
+  http://groups.google.com/group/emacs-perl-intersection
+
+The code is available on github:
+  http://github.com/doomvox/rep
 
 You can also look for information at:
 
