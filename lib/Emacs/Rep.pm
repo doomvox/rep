@@ -10,14 +10,14 @@ Emacs::Rep - find & replace backend for rep.pl and in-turn rep.el
 
   use Emacs::Rep qw( do_finds_and_reps  parse_perl_substitutions );
 
-   my $substitutions =
-      [ [ 's/jerk/iconoclast/' ],
-        [ 's/conniving/shrewd/' ].
-        [ 's/(t)asteless/$1alented/i' ].
-      ];
+   my $substitutions =>>'END_S';
+      s/jerk/iconoclast/
+      s/conniving/shrewd/
+      s/(t)asteless/$1alented/i
+  END_S
 
   my $find_replaces_aref =
-    parse_perl_substitutions( $substitutions );
+    parse_perl_substitutions( \$substitutions );
 
   my $locations_aref =
         do_finds_and_reps( \$text, $find_replaces_aref );
@@ -25,8 +25,19 @@ Emacs::Rep - find & replace backend for rep.pl and in-turn rep.el
 
 =head1 DESCRIPTION
 
-Emacs::Rep is a module that contains one major routine,
-and a handful of helper routines.
+Emacs::Rep is a module that acts as a back-end for the
+rep.pl script which in turn is used by the emacs library.
+rep.el.
+
+It's purpose is to perform multiple perl substitution
+commands (e.g. s///g) on a given file, using emacs to
+interactively display and control the changes.
+
+The end user isn't expected to need to use these routines
+(or even the rep.pl script) directly.
+
+An application programmer might use these to add support
+for some other interactive front-end.
 
 =head2 EXPORT
 
@@ -43,6 +54,7 @@ use warnings;
 my $DEBUG = 1;
 use Carp;
 use Data::Dumper;
+use Text::Balanced qw{ extract_bracketed };
 
 require Exporter;
 
@@ -54,6 +66,11 @@ our %EXPORT_TAGS = ( 'all' => [
       parse_perl_substitutions
       flatten_locs
       revise_locations
+
+      strip_brackets
+      accumulate_find_reps
+      define_nonbracketed_s_scraper_pat
+      split_perl_substitutions
 
     ) ] );
 
@@ -225,24 +242,27 @@ sub revise_locations {
 
 =item flatten_locs
 
-Serialize the locations data structure for emacs comprehension.
-
-There's a need to preserve "pass" numbering to colorize the
-changes from each substitution differently.
-
-We pass on the delta info on the theory a use may be found for
-it on the other side in emacs land (and it has!).
+Serialize the locations data structure into a text form to be
+passed to emacs.
 
 The result is a block of text, where each line has four
 integers separated by colons, in this order:
 
   <pass>:<beg>:<end>:<delta>:<orig>;
 
-The trailine semi-colon in this format allows it to work on strings
-with embedded newlines, and embedded semi-colons as well.
-However, an embedded semi-colon *with* a following embedded newline
-*must* be backslash escaped, so this routine just escapes all
-semi-colons.
+The fields:
+
+  pass  -- line number of the substitution command that made the change
+  beg   -- beginning of the modified string, integer count starting at 1
+  end   -- ending of the modified string, integer count starting at 1
+  delta -- the change in character length due to the substitution
+  orig  -- the original string that was replaced.
+
+The trailine semi-colon in this format allows it to work easily
+on strings with embedded newlines, and embedded semi-colons as well.
+However, an embedded semi-colon with an immediately following embedded
+newline *must* be backslash escaped.  This routine just escapes all
+semi-colons in this field.
 
 TODO move this documentation to some place that talks about it as a
 data interchange format.
@@ -268,9 +288,6 @@ sub flatten_locs {
   return $ret;
 }
 
-
-
-
 =item split_perl_substitutions
 
 Split the text from the perl substitutions buffer up into
@@ -290,16 +307,8 @@ Except that we'd like to allow for multi-line substitutions.
 
 # TODO this is a stub that presumes each substitution is on
 # one line.  Modify it to allow multi-line s///.
-#
-# The theory is that this could be beefed up to
-# split up any number of s/// commands, ideally
-# using something like
-#   qr{ s([^:alnum:\s]) .*?  \1 [xmisoge]* ;? }
 
-# Even better though, would be to directly integrate
-# this task with parse_perl_substitutions.
-# Currently this routine is only called from there.
-
+# used by parse_perl_substitutions
 sub split_perl_substitutions {
   my $text_ref = shift;
 
@@ -308,59 +317,27 @@ sub split_perl_substitutions {
   return $s_ref;
 }
 
-=item parse_perl_substitutions
+## TODO Can I assume that commented lines are stripped before we get here?
+## TODO Tried hacking a few multi-line parsers.  Not there yet.
 
-Scrape various forms of perl s///, and return the
-find_replaces data structure used by L<do_finds_and_args>.
 
-Takes one argument, an aref of "s///" strings.
+=item define_nonbracketed_s_scraper_pat
 
-End of line comments beginning with a "#" are allowed.
-(At present, everything after the close of the substitution is
-just ignored).
+This routine returns a scraper pattern that can parse substitutions
+of the form s///, and the usual variants, e.g. s###ims.
+It works only on the non-bracketed style (e.g. s{}{} must be handled
+some other way).
 
-Currently, this does not support the bracket form of
-substitution commands, e.g. s{}{};
-
-Example usage:  ### TODO revise this, now it takes text ref, not aref.
-
-my $substitutions =
-  [ 's/pointy-haired boss/esteemed leader/',
-  ];
-
-my $find_replaces_aref =
-  parse_perl_substitutions( $substitutions );
-
-Where the returned data should look like:
-
-   [ ['pointy-haired boss', 'esteemed leader'],
-   ]
+Captures:
+  $1  separator character (e.g. '/')
+  $2  find pattern
+  $3  replace string
+  $4  modifiers
 
 =cut
 
-sub parse_perl_substitutions {
-  my $reps_text_ref = shift;
-  my $substitutions = split_perl_substitutions( $reps_text_ref );
+sub define_nonbracketed_s_scraper_pat {
 
-  my @find_reps;
-
-  # TODO something like this could be used to choose a scraper
-  # depending on whether s/// or s{}{} style is in use.
-  # It loads $1 with either / or {
-  my $s_type_pat =
-    qr{
-        ^
-        \s*
-        s
-        ( [/{] )                                     # }
-    }x;
-
-  # The following scraper pattern should parse substitutions
-  # of the form s///, and the usual variants, e.g. s###ims
-  # See notes following the pattern.
-
-  # TODO this is currently pinned using ^$ without the /ms modifiers.
-  # but I want to scrape multi-line strings...
   my $scraper_pat_1 =
     qr{
        ^
@@ -372,10 +349,20 @@ sub parse_perl_substitutions {
        \1
        ( (?: [^ \1 \\ ] | \\ \1 | \s ) *? )
        \1
-       ( [xmsige]*? ) # we allow "ge", though g is always on and e is ignored
-       .*   # ignore anything following close of s///
+       ( [^ \1 \# ]* )
+
+       (.*)        # capture comments, if any
+
        $
-      }x;
+      }xms;
+
+#        \s*
+#        ( [xmsige]*? ) # we allow "ge", though g is always on and e is ignored
+#        ;?
+#        \s*
+#        #?
+#        .*   # ignore anything following close of s///
+#        $
 
   # Notes: we use some of the usual tricks for allowing backslash escapes
   # of the separators, see Friedl, "Matching Delimited Text".
@@ -393,32 +380,92 @@ sub parse_perl_substitutions {
   #     but then why is there any need for special handling of
   #     escaped separators: "\\ \1"   (( TODO is there? check again. ))
 
-   my $s_ref = $substitutions;  # aref, one substitution string in each
+
+
+}
+
+=item parse_perl_substitutions
+
+Scrape various forms of perl s///, and return the
+find_replaces data structure used by L<do_finds_and_args>.
+
+Takes one argument, an aref of "s///" strings.
+The bracketed form (e.g. "s{}{}" is also supported),
+however the (somewhat obscure) mixed form is not,
+(i.e. "s//{}" won't work).
+
+TODO check if still true:
+  End of line comments beginning with a "#" are allowed.
+  (At present, everything after the close of the substitution is
+  just ignored).
+
+Example usage:
+
+my $substitutions =>>'END_S';
+s/pointy-haired boss/esteemed leader/
+s/death spiral/minor adjustment/
+END_S
+
+my $find_replaces_aref =
+  parse_perl_substitutions( \$substitutions );
+
+Where the returned data should look like:
+
+   [ ['pointy-haired boss', 'esteemed leader'],
+     ['death spiral',       'minor adjustment'],
+   ]
+
+=cut
+
+sub parse_perl_substitutions {
+  my $reps_text_ref = shift;
+  my $substitutions = split_perl_substitutions( $reps_text_ref );
+
+  my @find_reps;
+
+  # checks for bracketed style of substitutions (loads $1 with opening bracket)
+  my $bracketed_form =
+    qr{
+        ^
+        \s*
+        s                   # skipping the "s"
+        (                   # capture remainder to $1
+          (?: [({[<] )      # any open bracket                        # )}]>
+        .*?
+        )
+      ;?                    # skip any trailing semi-colon
+      \s*
+      $
+    }xms;
+
+  my $scraper_pat_1 = define_nonbracketed_s_scraper_pat();
 
   my $comment_pat = qr{ ^ \s*? \# }xms;
 
  LINE:
-  foreach my $s ( @{ $s_ref } ) {
+  foreach my $s ( @{ $substitutions } ) {
     if ($s =~ m{ $comment_pat }xms ) {
       next LINE;
+    } elsif ( $s =~ m{ $bracketed_form }xms ) {
+      my $remainder = $1; # with leading s removed
+      my ($find, $rep, $raw_mods);
+      my $delim = '(){}[]<>';
+      ($find, $remainder) = extract_bracketed( $remainder, $delim );
+      ($rep, $remainder)  = extract_bracketed( $remainder, $delim );
+      $raw_mods = $remainder;
+
+      strip_brackets( \$find );
+      strip_brackets( \$rep );
+
+      accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
+
     } elsif ( $s =~ m{ $scraper_pat_1 }x ) {
-      my $find = $2;
-      my $rep  = $3;
-      my $raw_mods = $4;
+      my ($find, $rep, $raw_mods);
+      $find     = $2;
+      $rep      = $3;
+      $raw_mods = $4;
 
-      # The modifiers we care about (screening out spurious g or e)
-      my @mods = qw( x m s i );
-      my $mods = '';
-      foreach my $m (@mods) {
-        if ( $raw_mods =~ qr{$m}x ) {
-          $mods .= $m;
-        }
-      }
-
-      # modifiy $find to incorporate the modifiers internally
-      $find = "(?$mods)" . $find if $mods;
-
-      push @find_reps, [ $find, $rep ];
+      accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
 
     } else {
       croak "Problem parsing: $s";
@@ -428,6 +475,88 @@ sub parse_perl_substitutions {
   }
   \@find_reps;
 }
+
+
+
+=item accumulate_find_reps
+
+Example usage:
+
+ accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
+
+=cut
+
+sub accumulate_find_reps {
+  my $find_reps_aref = shift;
+  my $find           = shift;
+  my $rep            = shift;
+  my $raw_mods       = shift;
+
+  if ($raw_mods) {
+    # The modifiers we care about (screening out spurious g or e or ;)
+    my @mods = qw( x m s i );
+    my $mods = '';
+    foreach my $m (@mods) {
+      if ( $raw_mods =~ qr{$m}x ) {
+        $mods .= $m;
+      }
+    }
+    # modify $find to incorporate the modifiers internally
+    $find = "(?$mods)" . $find if $mods;
+  }
+
+  push @{ $find_reps_aref }, [ $find, $rep ];
+}
+
+
+
+=item strip_brackets
+
+Example usage:
+
+ if( strip_brackets( \$string ) ) {
+    print "brackets removed, see: $string\n";
+ }
+
+=cut
+
+sub strip_brackets {
+  my $string_ref = shift;
+  my $open_bracket_pat = qr{ ( [\(\{\[\<] ) }xms;                        # )}]>
+
+  my $status;
+  if( defined( $string_ref ) ) {
+    my $bracket;
+    if( ${ $string_ref } =~ s{ ^ \s* $open_bracket_pat \s* }{}xms ) {
+      $bracket = $1;
+    } else {
+      return; # fail
+    }
+
+    my $close;
+    if ( $bracket eq '(' ) {
+      $close = ')';
+    } elsif ( $bracket eq '{' ) {
+      $close = '}';
+    } elsif ( $bracket eq '[' ) {
+      $close = ']';
+    } elsif ( $bracket eq '<' ) {
+      $close = '>';
+    } else {
+      carp "Unexpected bracket string capture: $bracket";
+      return;                   # fail
+    }
+
+    my $close_bracket_pat = qr{ \Q$close\E }xms;
+
+    if ( ${ $string_ref } =~ s{  \s*? $close_bracket_pat \s*  $ }{}xms ) {
+      $status = 1;
+    }
+  }
+  return $status;
+}
+
+
 
 1;
 

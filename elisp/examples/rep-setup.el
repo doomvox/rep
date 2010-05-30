@@ -23,7 +23,11 @@
 
 ;;; Commentary:
 
-;;
+;;  This is a simple example of how one might do set-up for
+;;  the rep.el package.
+
+;;  TODO add more bells and whistles: no point in publishing this
+;;  as it stands.
 
 ;; Put this file into your load-path and the following into your ~/.emacs:
 ;;   (require 'rep-setup)
@@ -38,21 +42,6 @@
 
 
 (require 'rep)
-
-;; Add definitions of default locations for things like
-;;  *.rep files.
-
-;; the backup files, I think I'm going to force into local .rep subdirs
-;; for now.
-
-;; defines binding: Control-c . S
-(rep-define-global-key-binding "C-c.")
-
-;; Any other magic to make that binding available everywhere?
-
-;; associate the *.rep extension with my substitutions-mode
-
-
-
+(global-set-key "\C-c.S" 'rep-open-substitutions)
 
 ;;; rep-setup.el ends here

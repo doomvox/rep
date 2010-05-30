@@ -8,19 +8,23 @@ rep.pl - perform a series of find an replaces
 
 =head1 SYNOPSIS
 
-  perl rep.pl --extension <bak_extension> --substitutions <changes_list>  <file_to_act_on>
+  perl rep.pl --backup <backup_file> --substitutions <substitutions_file> --target <file_to_act_on>
 
-  perl rep.pl --extension <bak_extension> <file_to_act_on> 's/foo/bar'
+  perl rep.pl -b <backup_file> -f <file_to_act_on> 's/foo/bar'
 
 =head2 USAGE
 
   rep.pl -[options] [arguments]
 
   Options:
-     -t                temp file name (for location data)
-     --temp            same
+
      -s                substitutions list file
      --substitutions   same
+     -f                target file name to be modified
+     --target          same
+     -B                backup file name
+     --backup          same
+
      -d                debug messages on
      --debug           same
      -h                help (show usage)
@@ -37,34 +41,42 @@ strings.
 It is intended to act as an intermediary between Emacs::Rep
 and the emacs lisp code which drives the "rep" process.
 
-Emacs can then use the recorded locations to highlight the changed regions.
+Emacs can then use the recorded locations to highlight the
+changed regions, and it can use information about what was
+replaced to perform undo operations.
 
-The elisp code must choose a unique backup_extension in order to
-handle reverts:
+The elisp code must choose a unique backup file name. This makes
+it possible to do reverts of an entire run of substitutions.
 
-  perl rep.pl --extension <unique_extension> --substitutions <changes_list> <file_to_act_on>
+  perl rep.pl --backup <backup_file> --substitutions <substitutions_file> --target <file_to_act_on>
 
 The script returns a serialized data dump of the history of the changes to the text,
 in a form that looks like this:
 
-  0:303:308:1:cars
-  1:83:116:8:of
-  1:113:123:8:of
-  1:171:181:8:of
-  1:431:441:8:of
-  1:596:606:8:of
-  2:61:86:23:.
-  2:330:355:23:.
-  2:639:664:23:.
-  2:889:914:23:.
-  3:702:711:0:evening
-  4:855:863:4:cane
+  0:303:308:1:cars;
+  1:83:116:8:of;
+  1:113:123:8:of;
+  1:171:181:8:of;
+  1:431:441:8:of;
+  1:596:606:8:of;
+  2:61:86:23:.;
+  2:330:355:23:.;
+  2:639:664:23:.;
+  2:889:914:23:.;
+  3:702:711:0:evening;
+  4:855:863:4:cane;
 
 The first field corresponds to the "pass" through the file (one pass per substitution command)
 The second and third fields are the begin and end points of the changed strings, counting from 1.
 The fourth field is the size of the "delta", the change in length due to the modification.
 The fifth field is the originally matched string, before the change.
 Note: this field may contain a colon.  Any separators after the fourth should be ignored.
+
+(( documentation inside Rep.pm is more up-to-date
+   TODO
+   centralize that somewhere.
+   A lone pod file?
+))
 
 =cut
 
@@ -90,22 +102,14 @@ our $VERSION = 0.01;
 my  $prog    = basename($0);
 
 my $DEBUG   = 1;                 # TODO set default to 0 when in production
-my ( $locs_temp_file, $reps_file, $unique_extension );
+my ( $locs_temp_file, $reps_file, $backup_file, $target_file );
 GetOptions ("d|debug"           => \$DEBUG,
             "v|version"         => sub{ say_version(); },
             "h|?|help"          => sub{ say_usage();   },
             "s|substitutions=s" => \$reps_file,
-            "E|extension=s"     => \$unique_extension,
+            "B|backup=s"        => \$backup_file,
+            "f|target=s"        => \$target_file,
            ) or say_usage();
-
-# This version mimics "-i" behavior but reserves STDOUT to communicate
-# the changed location data back to the calling program (emacs)
-
-my $input_file = shift;  # presume we act on only one file
-my $backup = $input_file . '.' . $unique_extension;
-
-# find_and_reps are specified by perl-pseudo-code,
-#   s///xims  or (someday) s{}{}xmis
 
 # get a series of finds and replaces
 #   either from the substitutions file,
@@ -127,11 +131,13 @@ my $find_replaces_aref =
 
 # Note: don't do rename this until after the substitutions parse.
 # (possibly: on failure, will need to undo this -- TODO)
-rename( $input_file, $backup ) or croak "can't copy $input_file to $backup: $!";
+rename( $target_file, $backup_file ) or
+  croak "can't copy $target_file to $backup_file: $!";
 my $text;
 { undef $/;
-  open my $fin, '<', $backup or croak "$!";
+  open my $fin, '<', $backup_file or croak "$!";
   $text = <$fin>;
+  close( $fin );
 }
 
 # Apply the finds and replaces to text, recording the history
@@ -142,7 +148,7 @@ eval {
     do_finds_and_reps( \$text, $find_replaces_aref );
 };
 
-open my $fout, '>', $input_file or croak "$!";
+open my $fout, '>', $target_file or croak "$!";
 print {$fout} $text;
 close($fout);
 
