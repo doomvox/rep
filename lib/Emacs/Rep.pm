@@ -77,7 +77,7 @@ our %EXPORT_TAGS = ( 'all' => [
 
 our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
 our @EXPORT = qw(  );
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 
 =item do_finds_and_reps
 
