@@ -5,7 +5,7 @@
 use warnings;
 use strict;
 $|=1;
-my $DEBUG = 1;             # TODO set to 0 before ship
+my $DEBUG = 0;             # TODO set to 0 before ship
 use Data::Dumper;
 
 use Test::More;

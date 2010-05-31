@@ -8,10 +8,21 @@ my $builder = Module::Build->new(
     dist_author         => q{Joseph Brenner <doom@kzsu.stanford.edu>},
     dist_version_from   => 'lib/Emacs/Rep.pm',
     build_requires => {
-        'Test::More' => 0,
-    },
+        'Data::Dumper::Perltidy' => 0,
+        'Test::More'             => 0,
+        'FindBin'                => 0,
+        'lib'                    => 0,
+      },
+    requires => {
+        Text::Balanced => 0,
+        strict         => 0,
+        warnings       => 0,
+        Carp           => 0,
+        Data::Dumper   => 0,
+      },
     add_to_cleanup      => [ 'Emacs-Rep-*' ],
     create_makefile_pl => 'traditional',
+    script_files => ['script/rep.pl'],
 );
 
 $builder->create_build_script();

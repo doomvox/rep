@@ -3,11 +3,8 @@ Changes
 MANIFEST
 README
 lib/Emacs/Rep.pm
-scripts/rep.pl
+script/rep.pl
 elisp/rep.el
-t/00-load.t
-t/pod-coverage.t
-t/pod.t
 t/01-Emacs-Rep-parse_perl_substitutions.t
 t/02-Emacs-Rep-do_finds_and_reps.t
 t/03-Emacs-Rep-strip_brackets.t

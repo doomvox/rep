@@ -5,7 +5,7 @@
 use warnings;
 use strict;
 $|=1;
-my $DEBUG = 1;             # TODO set to 0 before ship
+my $DEBUG = 0;             # TODO set to 0 before ship
 use Data::Dumper;
 
 use Test::More;
@@ -24,7 +24,7 @@ BEGIN {
   my $substitutions = define_substitution_cases('simple');
 
   my $find_reps =
-    parse_perl_substitutions( $substitutions );
+    parse_perl_substitutions( \$substitutions );
 
   ($DEBUG) && print Dumper( $find_reps );
 
@@ -43,20 +43,20 @@ sub define_substitution_cases {
   my $type = shift;
 
   my $simple_substitutions=<<'END_S';
-   s/alpha/ralpha/
+   s|bupkes|nada|;
+   s/alpha/ralpha/;
    s/aaa/XXX/i;
    s/ bogus /lame/x;
    s|/usr/bin|/usr/local/bin|;
-   s/JOKE/\/bin\/laden/
-   s/\/bin\/laden/<stale humor alert>/
+   s/JOKE/\/bin\/laden/;
+   s/\/bin\/laden/<stale humor alert>/;
    s/by, the, way/by the way/;
-   s|bupkes|nada|
    s|kirk\|spock /|yoda\|wookie /|i;
-   s^crummy buttons^spinach^
-   s"stork"raven"ms
+   s^crummy buttons^spinach^;
+   s"stork"raven"ms;
    s/\bgreen\b/mauve/g;
    s/Login: $foo/Login: $bar/; # run-time pattern
-   s/Mister\b/Mr./g
+   s/Mister\b/Mr./g;
    s/\d+/$&*2/e;               # yields abc246xyz
    s/\d+/sprintf("%5d",$&)/e;  # yields abc  246xyz
    s/\w/$& x 2/eg;             # yields aabbcc  224466xxyyzz
@@ -114,97 +114,30 @@ END_S
 sub define_expected {
   my $type = shift;
 
-  my $expected_simple =
-    [
-          [
-            'alpha',
-            'ralpha'
-          ],
-          [
-            'aaa',
-            'XXX'
-          ],
-          [
-            ' bogus ',
-            'lame'
-          ],
-          [
-            '/usr/bin',
-            '/usr/local/bin'
-          ],
-          [
-            'JOKE',
-            '\\/bin\\/laden'
-          ],
-          [
-            '\\/bin\\/laden',
-            '<stale humor alert>'
-          ],
-          [
-            'by, the, way',
-            'by the way'
-          ],
-          [
-            'bupkes',
-            'nada'
-          ],
-          [
-            'kirk\\|spock /',
-            'yoda\\|wookie /'
-          ],
-          [
-            'crummy buttons',
-            'spinach'
-          ],
-          [
-            'stork',
-            'raven'
-          ],
-          [
-            '\\bgreen\\b',
-            'mauve'
-          ],
-          [
-            'Login: $foo',
-            'Login: $bar'
-          ],
-          [
-            'Mister\\b',
-            'Mr.'
-          ],
-          [
-            '\\d+',
-            '$&*2'
-          ],
-          [
-            '\\d+',
-            'sprintf("%5d",$&)'
-          ],
-          [
-            '\\w',
-            '$& x 2'
-          ],
-          [
-            '%(.)',
-            '$percent{$1}'
-          ],
-          [
-            '^\\s*(.*?)\\s*$',
-            '$1'
-          ],
-          [
-            '^\\s+',
-            ''
-          ],
-          [
-            '\\s+$',
-            ''
-          ],
-          [
-            '([^ ]*) *([^ ]*)',
-            '$2 $1'
-          ]
-        ];
+my $expected_simple = [
+    [ 'bupkes',           'nada' ],
+    [ 'alpha',            'ralpha' ],
+    [ '(?i)aaa',          'XXX' ],
+    [ '(?x) bogus ',      'lame' ],
+    [ '/usr/bin',         '/usr/local/bin' ],
+    [ 'JOKE',             '/bin/laden' ],
+    [ '/bin/laden',       '<stale humor alert>' ],
+    [ 'by, the, way',     'by the way' ],
+    [ '(?i)kirk|spock /', 'yoda|wookie /' ],
+    [ 'crummy buttons',   'spinach' ],
+    [ '(?ms)stork',       'raven' ],
+    [ '\\bgreen\\b',      'mauve' ],
+    [ 'Login: $foo',      'Login: $bar' ],
+    [ 'Mister\\b',        'Mr.' ],
+    [ '\\d+',             '$&*2' ],
+    [ '\\d+',             'sprintf("%5d",$&)' ],
+    [ '\\w',              '$& x 2' ],
+    [ '%(.)',             '$percent{$1}' ],
+    [ '^\\s*(.*?)\\s*$',  '$1' ],
+    [ '^\\s+',            '' ],
+    [ '\\s+$',            '' ],
+    [ '([^ ]*) *([^ ]*)', '$2 $1' ]
+];
 
   my $expected;
   if( $type eq 'simple' ) {

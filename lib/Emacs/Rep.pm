@@ -71,6 +71,7 @@ our %EXPORT_TAGS = ( 'all' => [
       accumulate_find_reps
       define_nonbracketed_s_scraper_pat
       split_perl_substitutions
+      dequote
 
     ) ] );
 
@@ -305,11 +306,63 @@ Except that we'd like to allow for multi-line substitutions.
 
 =cut
 
-# TODO this is a stub that presumes each substitution is on
-# one line.  Modify it to allow multi-line s///.
+  # We assume that our logical lines always have boundaries
+  # aligned with physical ones, i.e. a s{}{}; structure may
+  # stretch across any number of lines, but we will not put
+  # two on one line.
+
+  # So, a logical line ends at the first newline after an unquoted semi-colon.
+
+  # We do not assume only s/// commands, so comment lines will also be
+  # included (and we allow for further expansion of the system beyond just
+  # substitutions).
+
+  # TODO further work may be needed to make sure multi-line substitutions
+  # are colorized correctly.
+
+  # TODO this approach actually requires that already quoted ; be backwhack
+  # quoted.  In other words: I am not there yet.
 
 # used by parse_perl_substitutions
 sub split_perl_substitutions {
+  my $text_ref = shift;
+
+  # I *thought* this was working, but now it's missing simple things...
+# Oh: the sub line after a comment line gets eaten all as one. Ugh.
+#   my $line_pat =
+#     qr{
+#         ^
+#         (
+#           (?: [^ ; \\ ] | \\ ; | [^;] )*
+#           ;
+#           .*?
+#         )
+#         $
+#     }xms;
+
+# This requires a ^s, and will skip comment lines entirely.
+  my $line_pat =
+    qr{
+        ^
+        \s*?
+        (
+          s
+          (?: [^ ; \\ ] | \\ ; | [^;] )*
+          ;
+          .*?
+        )
+        $
+    }xms;
+
+  my @lines;
+  while ( ${ $text_ref } =~ m{ $line_pat }xmsg ) {
+    push @lines, $1;
+  }
+
+  return \@lines;
+}
+
+sub split_perl_substitutions_simple {
   my $text_ref = shift;
 
   my $s_ref = [ split '\n', ${ $text_ref } ];
@@ -317,16 +370,13 @@ sub split_perl_substitutions {
   return $s_ref;
 }
 
-## TODO Can I assume that commented lines are stripped before we get here?
-## TODO Tried hacking a few multi-line parsers.  Not there yet.
-
 
 =item define_nonbracketed_s_scraper_pat
 
 This routine returns a scraper pattern that can parse substitutions
 of the form s///, and the usual variants, e.g. s###ims.
-It works only on the non-bracketed style (e.g. s{}{} must be handled
-some other way).
+It works only on the non-bracketed style (i.e. something like
+the s{}{} form must be handled some other way).
 
 Captures:
   $1  separator character (e.g. '/')
@@ -338,37 +388,30 @@ Captures:
 
 sub define_nonbracketed_s_scraper_pat {
 
-  my $scraper_pat_1 =
+  my $scraper_pat =
     qr{
        ^
        \s*
        s
        ( [^[:alnum:]\s(){}<>\[\]] ) # allowed separators:
-                                    # not alpha-num or whitespace or brackets
+                                    # not alpha-num, whitespace or brackets
        ( (?: [^ \1 \\ ] | \\ \1 | \\ .  | \s ) *? )
        \1
        ( (?: [^ \1 \\ ] | \\ \1 | \s ) *? )
        \1
-       ( [^ \1 \# ]* )
+       \s*
+       ( [xmsgioe]*? ) # we allow "ge", though g is always on and e is ignored
+       \s*
+       ;      # semi-colon termination is now required.
 
-       (.*)        # capture comments, if any
-
-       $
+       # line-end comments are allowed (not captured).
       }xms;
 
-#        \s*
-#        ( [xmsige]*? ) # we allow "ge", though g is always on and e is ignored
-#        ;?
-#        \s*
-#        #?
-#        .*   # ignore anything following close of s///
-#        $
-
-  # Notes: we use some of the usual tricks for allowing backslash escapes
+  # This uses some of the usual tricks for allowing backslash escapes
   # of the separators, see Friedl, "Matching Delimited Text".
-  # I'm not using his "unrolled" form, because I think it's poor for
-  # maintainability
-  #
+  # I'm not using his "unrolled" form, because it hurts maintainability
+  # (if you ask me).
+
   # I don't claim to understand why some of the tweaks above
   # were needed to get it to work:
   #
@@ -379,8 +422,6 @@ sub define_nonbracketed_s_scraper_pat {
   #  o  The "\\." makes sense to pass something like a "\b",
   #     but then why is there any need for special handling of
   #     escaped separators: "\\ \1"   (( TODO is there? check again. ))
-
-
 
 }
 
@@ -438,9 +479,9 @@ sub parse_perl_substitutions {
       $
     }xms;
 
-  my $scraper_pat_1 = define_nonbracketed_s_scraper_pat();
+  my $scraper_pat = define_nonbracketed_s_scraper_pat();
 
-  my $comment_pat = qr{ ^ \s*? \# }xms;
+  my $comment_pat = qr{ ^ \s*? \# .* $ }xms;
 
  LINE:
   foreach my $s ( @{ $substitutions } ) {
@@ -459,11 +500,11 @@ sub parse_perl_substitutions {
 
       accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
 
-    } elsif ( $s =~ m{ $scraper_pat_1 }x ) {
-      my ($find, $rep, $raw_mods);
-      $find     = $2;
-      $rep      = $3;
-      $raw_mods = $4;
+    } elsif ( $s =~ m{ $scraper_pat }x ) {
+      my ($sep, $find, $rep, $raw_mods) = ($1, $2, $3, $4);
+
+      dequote( \$find, $sep );
+      dequote( \$rep, $sep );
 
       accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
 
@@ -512,6 +553,14 @@ sub accumulate_find_reps {
 
 =item strip_brackets
 
+Removes any balanced pair of surrounding bracket characters
+from the referenced string.  Returns 1 for success, 0 for failure.
+
+Text::Balanced's extract_bracketed, in it's infinite wisdom
+does not extract what's inside the brackets, but instead
+includes the brackets in the output.  This is a utility
+to deal with this oddity.
+
 Example usage:
 
  if( strip_brackets( \$string ) ) {
@@ -523,6 +572,8 @@ Example usage:
 sub strip_brackets {
   my $string_ref = shift;
   my $open_bracket_pat = qr{ ( [\(\{\[\<] ) }xms;                        # )}]>
+
+  my $original = ${ $string_ref };
 
   my $status;
   if( defined( $string_ref ) ) {
@@ -551,12 +602,40 @@ sub strip_brackets {
 
     if ( ${ $string_ref } =~ s{  \s*? $close_bracket_pat \s*  $ }{}xms ) {
       $status = 1;
+    } else { # no change on failure
+      $status = 0;
+      ${ $string_ref } = $original;
     }
   }
   return $status;
 }
 
 
+
+=item dequote
+
+Removes backwhack quoting, but only from the single character
+supplied as a second argument.
+
+Operates on a string reference, modifying it in place.
+
+Example usage:
+
+  $find = '\/home\/doom';
+  dequote( \$find, '/' );
+
+  # $find now '/home/doom';
+
+(Sometimes it's easier to roll your own that to find someone else's.)
+(Sometimes.)
+
+=cut
+
+sub dequote {
+  my $string_ref = shift;
+  my $sep = shift;
+  ${ $string_ref } =~ s{ \\ \Q$sep\E }{$sep}xmsg;
+}
 
 1;
 

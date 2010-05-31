@@ -7,6 +7,11 @@
 ;; Keywords:
 ;; X-URL: not distributed yet
 
+;; Note: in the event that the licensing of the Emacs::Rep module
+;; (see the file lib/Emacs/Rep.pm in this package)
+;; conflicts with the following statement, the terms of Emacs::Rep
+;; shall be used.
+
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation; either version 2, or (at your option)
@@ -37,7 +42,7 @@
 ;;   (global-set-key "C-c.S" 'rep-open-substitutions)
 
 ;; Then, when editing a file you'd like to modify interactively
-;; using perl substitution commands (i.e. s///g), you can use
+;; using perl substitution commands (i.e. s///g;), you can use
 ;; "C-c.S" to open a small window associated with a *.rep file,
 ;; suitable for entering a series of substitution commands.
 ;; When you're ready, "C-x#" will run these substitutions on
@@ -166,14 +171,14 @@ any version.")
 (rep-make-face rep-09-face 09 "khaki1" "khaki4")
 (rep-make-face rep-10-face 10 "DarkOrange4" "DarkOrange1")
 (rep-make-face rep-11-face 11 "SeaGreen4" "SeaGreen1")
-(rep-make-face rep-12-face 12 "OliveDrab4" "OliveDrab1")
-(rep-make-face rep-13-face 13 "orange4" "orange1")
-(rep-make-face rep-14-face 14 "tan4" "tan1")
+(rep-make-face rep-12-face 12 "maroon4" "maroon1")
+(rep-make-face rep-13-face 13 "firebrick4" "firebrick1")
+(rep-make-face rep-14-face 14 "PeachPuff4" "PeachPuff1")
 (rep-make-face rep-15-face 15 "CadetBlue4" "CadetBlue1")
-(rep-make-face rep-16-face 16 "chocolate4" "chocolate1")
-(rep-make-face rep-17-face 17 "maroon4" "maroon1")
+(rep-make-face rep-16-face 16 "aquamarine4" "aquamarine1")
+(rep-make-face rep-17-face 17 "OliveDrab4" "OliveDrab1")
 (rep-make-face rep-18-face 18 "SpringGreen4" "SpringGreen1")
-(rep-make-face rep-19-face 19 "DarkOliveGreen4" "DarkOliveGreen1")
+(rep-make-face rep-19-face 19 "chocolate4" "chocolate1")
 (rep-make-face rep-20-face 20 "DarkSeaGreen4" "DarkSeaGreen1")
 (rep-make-face rep-21-face 21 "LightSalmon4" "LightSalmon1")
 (rep-make-face rep-22-face 22 "DeepSkyBlue4" "DeepSkyBlue1")
@@ -182,12 +187,12 @@ any version.")
 (rep-make-face rep-25-face 25 "magenta4" "magenta1")
 (rep-make-face rep-26-face 26 "blue4" "blue1")
 (rep-make-face rep-27-face 27 "DeepPink4" "DeepPink1")
-(rep-make-face rep-28-face 28 "aquamarine4" "aquamarine1")
+(rep-make-face rep-28-face 28 "DarkOliveGreen4" "DarkOliveGreen1")
 (rep-make-face rep-29-face 29 "coral4" "coral1")
 (rep-make-face rep-30-face 30 "PaleGreen4" "PaleGreen1")
-(rep-make-face rep-31-face 31 "PeachPuff4" "PeachPuff1")
-(rep-make-face rep-32-face 32 "firebrick4" "firebrick1")
-(rep-make-face rep-33-face 33 "PeachPuff4" "PeachPuff1")
+(rep-make-face rep-31-face 31 "tan4" "tan1")
+(rep-make-face rep-32-face 32 "orange4" "orange1")
+(rep-make-face rep-33-face 33 "cornsilk4" "cornsilk1")
 
 (defvar rep-face-alist ()
  "Faces keyed by number (an integer to font association).
@@ -432,7 +437,7 @@ Choosing the file name and location is a job for routines such as
            "# Enter s///g lines "
            "/e not allowed /g assumed, "
            "'C-x #' applies to other window") )
-         ( template "s///g" )
+         ( template "s///g;" )
          )
     (split-window-vertically number-lines)
     (find-file file)
@@ -521,7 +526,8 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
 
     (cond (data
            (rep-markup-target-buffer data target-file-buffer backup-file)
-           (rep-markup-lines changes-list-buffer)
+           ;; (rep-markup-lines changes-list-buffer)
+           (rep-markup-substitution-lines changes-list-buffer)
 
            ;; jump to the first change in the modified buffer
            (goto-char
@@ -557,6 +563,27 @@ sub-directory will be used in parallel with the FILE."
        )
     full-file-name))
 
+(defun rep-probe-for-program (program)
+  "Probe the system for the given external PROGRAM."
+  (let* (
+         (cmd1
+          (format "which %s"
+                  (shell-quote-argument program)))
+         (cmd2
+          (format "locate /%s"
+                  (shell-quote-argument program)))
+         (result1 (shell-command-to-string cmd1))
+;;         (result2 (shell-command-to-string cmd2))
+;;         (ret (concat result1 " " result2))
+         (ret result1)
+         )
+    (cond ((not (> (length result1) 1))
+           (message "The program %s does not seem to be in your PATH." program)
+          nil)
+          (t
+           ret))
+    ))
+
 ;; Used by rep-substitutions-apply-to-other-window
 (defun rep-run-perl-substitutions ( changes-list-file target-file backup-file )
   "Applies substitutions in a CHANGES-LIST-FILE to a TARGET-FILE.
@@ -567,15 +594,24 @@ used on all of them.  The original file is saved as the given BACKUP-FILE."
   (let* (
          (rep-pl "rep.pl")
 
+         ;; TODO SOON probe system for program, provide informative error message.
+         ;; TODO capture stderr somehow?
          (perl-rep-cmd
                (format
                 "%s --backup %s --substitutions %s --target %s "
                 rep-pl
-                backup-file
-                changes-list-file
-                target-file))
-         (data (shell-command-to-string perl-rep-cmd))
+                (shell-quote-argument
+                 backup-file)
+                (shell-quote-argument
+                 changes-list-file)
+                (shell-quote-argument
+                 target-file)))
+         (check (rep-probe-for-program rep-pl))
+         data
          )
+    (cond (check
+           (setq data (shell-command-to-string perl-rep-cmd))
+           ))
     data))
 
 ;; Used by rep-substitutions-apply-to-other-window
@@ -644,6 +680,53 @@ Acts on the given BUFFER, but leaves the current window active."
       )
     ))
 
+
+;; TODO can be confused by embedded semicolons. I suspect,
+(defun rep-markup-substitution-lines (buffer)
+  "Mark-up the substitution lines in the given BUFFER.
+Uses a the line number with rep-lookup-markup-face to
+Assigns a color to each substitution command in the buffer,
+\(by counting from the top and feeding the position number
+to \\[rep-lookup-markup-face]\).
+
+Presumes all substitution commands begin with ^s.
+
+Acts on the given BUFFER, but leaves the current window active.
+"
+  (save-excursion ;; but that trick *never* works... so don't trust it
+    (let* ( (original-buffer (current-buffer))
+            (comment_pat  "^\s*?#")
+            (scmd_beg_pat "^\s*?s")
+;;            (scmd_end_pat ";\s*?\(#\|$\)")  ;; n.g.
+            (scmd_end_pat ";\s*?$")  ;; eh.
+            (scmd_count 0)
+            markup-face
+            )
+      (set-buffer buffer)
+      ;; if font-lock-mode was on, save that information
+      (setq rep-font-lock-buffer-status font-lock-mode)
+      (font-lock-mode -1) ;; turns off font-lock unconditionally
+      (goto-char (point-min))
+
+      (while (re-search-forward scmd_beg_pat nil t)
+        (setq markup-face (rep-lookup-markup-face scmd_count))
+
+        (let ( beg end )
+          (setq beg (match-beginning 0))
+          (cond ((re-search-forward scmd_end_pat nil t)
+                 (setq end (match-end 0))
+                 (put-text-property beg end 'face markup-face)
+                 (setq scmd_count (1+ scmd_count))
+                 (goto-char (- end 1))
+                 )
+                (t ;; found beginning but not ending...
+                 (message "Incomplete substitution command.")
+                 )
+                )
+          ))
+      (set-buffer original-buffer)
+      )
+    ))
 
 
 ;;--------

@@ -1,5 +1,7 @@
 Revision history for Emacs-Rep
 
-0.01    Date/time
-        First version, released on an unsuspecting world.
+0.01    Sun May 30 12:23:55 2010
+        First version.
+        Limitation: substitutions limited to single-line strings
+        (Every s/// must be on one line.)
 
