@@ -3,7 +3,11 @@ Revision history for Emacs-Rep
 0.01    Sun May 30 12:23:55 2010
         First version.
         Limitation: all of perl's substitutions syntax is
-        not support, in particular substitutions with embedded
+        not supported, in particular substitutions with embedded
         semicolons may behave oddly.
 
+0.02    Tue Jun  1 00:57:44 2010
+        Using a PPI-based solution now.  The full range of perl's
+        substitution syntax is now supported (including the insane
+        one).
 

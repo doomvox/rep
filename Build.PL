@@ -14,7 +14,7 @@ my $builder = Module::Build->new(
         'lib'                    => 0,
       },
     requires => {
-        'Text::Balanced' => 0,
+        'PPI'            => 0,
         'strict'         => 0,
         'warnings'       => 0,
         'Carp'           => 0,
