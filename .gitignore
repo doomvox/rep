@@ -9,3 +9,4 @@ Emacs-Rep-*.tar.gz
 META.yml
 blib
 Makefile.PL
+Makefile

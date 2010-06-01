@@ -54,7 +54,7 @@ use warnings;
 my $DEBUG = 1;
 use Carp;
 use Data::Dumper;
-use Text::Balanced qw{ extract_bracketed };
+use PPI;
 
 require Exporter;
 
@@ -289,156 +289,25 @@ sub flatten_locs {
   return $ret;
 }
 
-=item split_perl_substitutions
-
-Split the text from the perl substitutions buffer up into
-an aref of individual strings, one for each substitution command.
-
-Example usage:
-
-  my $substitutions = split_perl_substitutions( \$substitutions_text );
-
-This routine could *almost* just be replaces with a split on newlines:
-
-   my $s_ref = [ split '\n', $substitutions ];
-
-Except that we'd like to allow for multi-line substitutions.
-
-=cut
-
-  # We assume that our logical lines always have boundaries
-  # aligned with physical ones, i.e. a s{}{}; structure may
-  # stretch across any number of lines, but we will not put
-  # two on one line.
-
-  # So, a logical line ends at the first newline after an unquoted semi-colon.
-
-  # We do not assume only s/// commands, so comment lines will also be
-  # included (and we allow for further expansion of the system beyond just
-  # substitutions).
-
-  # TODO further work may be needed to make sure multi-line substitutions
-  # are colorized correctly.
-
-  # TODO this approach actually requires that already quoted ; be backwhack
-  # quoted.  In other words: I am not there yet.
-
-# used by parse_perl_substitutions
-sub split_perl_substitutions {
-  my $text_ref = shift;
-
-  # I *thought* this was working, but now it's missing simple things...
-# Oh: the sub line after a comment line gets eaten all as one. Ugh.
-#   my $line_pat =
-#     qr{
-#         ^
-#         (
-#           (?: [^ ; \\ ] | \\ ; | [^;] )*
-#           ;
-#           .*?
-#         )
-#         $
-#     }xms;
-
-# This requires a ^s, and will skip comment lines entirely.
-  my $line_pat =
-    qr{
-        ^
-        \s*?
-        (
-          s
-          (?: [^ ; \\ ] | \\ ; | [^;] )*
-          ;
-          .*?
-        )
-        $
-    }xms;
-
-  my @lines;
-  while ( ${ $text_ref } =~ m{ $line_pat }xmsg ) {
-    push @lines, $1;
-  }
-
-  return \@lines;
-}
-
-sub split_perl_substitutions_simple {
-  my $text_ref = shift;
-
-  my $s_ref = [ split '\n', ${ $text_ref } ];
-
-  return $s_ref;
-}
-
-
-=item define_nonbracketed_s_scraper_pat
-
-This routine returns a scraper pattern that can parse substitutions
-of the form s///, and the usual variants, e.g. s###ims.
-It works only on the non-bracketed style (i.e. something like
-the s{}{} form must be handled some other way).
-
-Captures:
-  $1  separator character (e.g. '/')
-  $2  find pattern
-  $3  replace string
-  $4  modifiers
-
-=cut
-
-sub define_nonbracketed_s_scraper_pat {
-
-  my $scraper_pat =
-    qr{
-       ^
-       \s*
-       s
-       ( [^[:alnum:]\s(){}<>\[\]] ) # allowed separators:
-                                    # not alpha-num, whitespace or brackets
-       ( (?: [^ \1 \\ ] | \\ \1 | \\ .  | \s ) *? )
-       \1
-       ( (?: [^ \1 \\ ] | \\ \1 | \s ) *? )
-       \1
-       \s*
-       ( [xmsgioe]*? ) # we allow "ge", though g is always on and e is ignored
-       \s*
-       ;      # semi-colon termination is now required.
-
-       # line-end comments are allowed (not captured).
-      }xms;
-
-  # This uses some of the usual tricks for allowing backslash escapes
-  # of the separators, see Friedl, "Matching Delimited Text".
-  # I'm not using his "unrolled" form, because it hurts maintainability
-  # (if you ask me).
-
-  # I don't claim to understand why some of the tweaks above
-  # were needed to get it to work:
-  #
-  # o   The "\s" alternation allows it to see spaces, but the
-  #     first alternation is anything that's not a separator or a backwhack:
-  #     how does that *not* do spaces?
-
-  #  o  The "\\." makes sense to pass something like a "\b",
-  #     but then why is there any need for special handling of
-  #     escaped separators: "\\ \1"   (( TODO is there? check again. ))
-
-}
-
 =item parse_perl_substitutions
 
-Scrape various forms of perl s///, and return the
-find_replaces data structure used by L<do_finds_and_args>.
+Scrapes some text looking for various forms of perl substitutions
+(i.e. "s///;", "s{}{};", etc.).
 
-Takes one argument, an aref of "s///" strings.
-The bracketed form (e.g. "s{}{}" is also supported),
-however the (somewhat obscure) mixed form is not,
-(i.e. "s//{}" won't work).
+Returns the find_replaces data structure used by L<do_finds_and_args>.
 
-TODO check if still true:
-  End of line comments beginning with a "#" are allowed.
-  (At present, everything after the close of the substitution is
-  just ignored).
+Takes one argument, a scalar reference to a block of text
+containing multiple perl substitution commands.
+
+The bracketed form (e.g. "s{}{}") is supported, even the
+(obscure, if not insane) mixed form is supported: "s{}//".
+
+End of line comments (after the closing semicolon) beginning with a "#",
+are allowed.
+
+Multi-line substitutions are also allowed.  Embedded comments inside
+a /x formatted pattern are not stripped out as you might expect:
+rather they're carried along inside the matched pattern.
 
 Example usage:
 
@@ -451,6 +320,7 @@ my $find_replaces_aref =
   parse_perl_substitutions( \$substitutions );
 
 Where the returned data should look like:
+(( TODO revise! ))
 
    [ ['pointy-haired boss', 'esteemed leader'],
      ['death spiral',       'minor adjustment'],
@@ -460,63 +330,40 @@ Where the returned data should look like:
 
 sub parse_perl_substitutions {
   my $reps_text_ref = shift;
-  my $substitutions = split_perl_substitutions( $reps_text_ref );
-
+  my $Document = PPI::Document->new( $reps_text_ref );
+  my $s_aref = $Document->find('PPI::Token::Regexp::Substitute');
   my @find_reps;
+  foreach my $s_obj (@{ $s_aref }) {
+    my $find      = $s_obj->get_match_string;
+    my $rep       = $s_obj->get_substitute_string;
+    my $modifiers = $s_obj->get_modifiers; # href
+    my @delims    = $s_obj->get_delimiters;
 
-  # checks for bracketed style of substitutions (loads $1 with opening bracket)
-  my $bracketed_form =
-    qr{
-        ^
-        \s*
-        s                   # skipping the "s"
-        (                   # capture remainder to $1
-          (?: [({[<] )      # any open bracket                        # )}]>
-        .*?
-        )
-      ;?                    # skip any trailing semi-colon
-      \s*
-      $
-    }xms;
+    my $raw_mods = join '', keys %{ $modifiers };
 
-  my $scraper_pat = define_nonbracketed_s_scraper_pat();
+    my $open_bracket_pat =
+      qr{ ( [({[<] )                            # )}]>
+        }xms;
 
-  my $comment_pat = qr{ ^ \s*? \# .* $ }xms;
+    my $find_delims = $delims[0];
+    my $rep_delims  = $delims[1];
 
- LINE:
-  foreach my $s ( @{ $substitutions } ) {
-    if ($s =~ m{ $comment_pat }xms ) {
-      next LINE;
-    } elsif ( $s =~ m{ $bracketed_form }xms ) {
-      my $remainder = $1; # with leading s removed
-      my ($find, $rep, $raw_mods);
-      my $delim = '(){}[]<>';
-      ($find, $remainder) = extract_bracketed( $remainder, $delim );
-      ($rep, $remainder)  = extract_bracketed( $remainder, $delim );
-      $raw_mods = $remainder;
-
+    if ($find_delims =~ m{ $open_bracket_pat }xms ) {
       strip_brackets( \$find );
+      ### TODO on multi-line $find, strip eol comments
+    } elsif ($rep_delims =~ m{ $open_bracket_pat }xms ) {
       strip_brackets( \$rep );
-
-      accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
-
-    } elsif ( $s =~ m{ $scraper_pat }x ) {
-      my ($sep, $find, $rep, $raw_mods) = ($1, $2, $3, $4);
-
-      dequote( \$find, $sep );
-      dequote( \$rep, $sep );
-
-      accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
-
-    } else {
-      croak "Problem parsing: $s";
-      # TODO Make sure the stack of changes atomic.
-      #      revert to original state if there's a problem.
+    } else {  # is this actually a *good* idea?
+      my $find_sep = substr( $find_delims, 0, 1 );
+      my $rep_sep  = substr( $find_delims, 0, 1 );
+      dequote( \$find, $find_sep );
+      dequote( \$rep,  $rep_sep  );
     }
+
+    accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
   }
   \@find_reps;
 }
-
 
 
 =item accumulate_find_reps
