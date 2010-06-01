@@ -5,7 +5,11 @@ but using perl5 substitution commands.
 
 INSTALLATION
 
-To install this module, run the following commands:
+To install this module, download the latest release from here:
+
+    http://search.cpan.org/search?query=Emacs%3A%3ARep&mode=all
+
+Run the following commands:
 
 	perl Build.PL
 	./Build
