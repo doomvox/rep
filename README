@@ -1,4 +1,4 @@
-Emacs-Rep - 0.02
+Emacs-Rep
 
 A tool for interactive finds and replaces from inside of emacs,
 but using perl5 substitution commands.

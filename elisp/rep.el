@@ -754,11 +754,13 @@ Uses the `rep-previous-versions-stack' buffer local variable."
 (defun rep-modified-accept-changes ()
   "Accept changes made in buffer, return to normal state."
   (interactive)
-  (rep-modified-mode nil)
+  (rep-modified-mode nil)  ;; TODO does this do anything?
   ;; turn font-lock back on if it was on
-  (if rep-font-lock-buffer-status
-      (font-lock-mode 1))
-  )
+  (cond (rep-font-lock-buffer-status
+         (font-lock-mode 1)
+         (font-lock-fontify-buffer)
+         ))
+  (save-buffer))
 
 ;; TODO rep-modified-display-changes-again ?
 ;;      inverse of the above
