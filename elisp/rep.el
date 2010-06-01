@@ -728,6 +728,15 @@ Acts on the given BUFFER, but leaves the current window active.
       )
     ))
 
+(defun rep-substitutions-mode-p ()
+  "Check if the current buffer has the rep-substitutions-mode on."
+;; since substitutions-mode is a major mode, this should be easish.
+  (let* ((this-mode major-mode)
+         (mode-name "rep-substitutions-mode")
+         )
+    (string= this-mode mode-name)
+    ))
+
 
 ;;--------
 ;; rep-modified-mode functions
@@ -746,24 +755,46 @@ Uses the `rep-previous-versions-stack' buffer local variable."
     ;; covering flakiness in revert-buffer & text properties.
     (font-lock-fontify-buffer)
     (put-text-property (point-min) (point-max) 'rep-change-stack ())
-    ;; in case you want to revert again...
+    ;; in case you want to revert another step up the stack
     (rep-modified-mode t)
     (setq rep-previous-versions-stack preserve-stack)
+    ;; also restore cperl syntax colors in substitutions window
+    (save-excursion
+      (other-window -1)
+      (cond ((rep-substitutions-mode-p)
+             (font-lock-mode 1)
+             (font-lock-fontify-buffer)
+             (other-window 1)))
+      )
     ))
 
+;; TODO should this make the substitutions window go away?
 (defun rep-modified-accept-changes ()
-  "Accept changes made in buffer, return to normal state."
+  "Accept changes made in buffer, return to normal state.
+Restores the standard syntax coloring, etc."
   (interactive)
-  (rep-modified-mode nil)  ;; TODO does this do anything?
-  ;; turn font-lock back on if it was on
-  (cond (rep-font-lock-buffer-status
-         (font-lock-mode 1)
-         (font-lock-fontify-buffer)
-         ))
-  (save-buffer))
+  (let ((file  (buffer-file-name))
+        )
+;;    (rep-modified-mode nil)  ;; TODO does this really do anything?
+    (rep-modified-mode -1)
+    ;; turn font-lock back on if it was on
+    (cond (rep-font-lock-buffer-status
+           (font-lock-mode 1)
+           (font-lock-fontify-buffer)
+           ))
+    (save-buffer)
+    ;; also restore cperl syntax colors in substitutions window
+    (save-excursion
+      (other-window -1)
+      (cond ((rep-substitutions-mode-p)
+             (font-lock-mode 1)
+             (font-lock-fontify-buffer)
+             (other-window 1))))
+    (message "rep.el: Changes accepted to %s." file)
+    ))
 
-;; TODO rep-modified-display-changes-again ?
-;;      inverse of the above
+;; TODO could write an inverse of the above
+;; rep-modified-display-changes-again
 
 (defun rep-modified-skip-to-next-change ()
   "Skip to next region modified by a substitution."
@@ -803,60 +834,58 @@ there, tries to advance the cursor to the next change."
             ))
     (let* ( (fields (pop stack))
             (orig  (nth 4 fields))
+            (pass  (string-to-number (nth 0 fields)))
             )
       (push fields stack) ;; TODO 98% certain this is silly
-      (message orig)
+      (message "Before substitution %s this was: %s" (1+ pass) orig)
       )))
 
 (defun rep-modified-undo-change-here ()
   "Undos the individual rep substitution change under the cursor.
 Undos the change at point, or if none is there, warns and does nothing.
 Note that this has nothing to do with the usual emacs \"undo\"
-system, which operates completely independantly."
+system, which operates completely independently."
   (interactive)
-  (let* ( (stack (get-text-property (point) 'rep-change-stack))
-         orig-len expected-len beg end current-string orig fields pass delta
-          )
-    (cond (stack ;; we are inside a changed region, so find it's extent
-           (setq beg
-                 (previous-single-property-change (point) 'rep-change-stack))
-           (setq end
-                 (next-single-property-change (point) 'rep-change-stack))
-           ))
+  (let* ((pair (rep-modified-extent-of-change))
+         (beg (nth 0 pair))
+         (end (nth 1 pair))
+         (stack (get-text-property (point) 'rep-change-stack))
+         )
     (cond ((not (and stack beg end))
            (message "No changed region to undo at point.")
            )
           (t
-           (setq fields (pop stack)) ;;  (("4" "41" "47" "3" "ket")
-           (setq orig  (nth 4 fields))
-           (setq pass  (string-to-number (nth 0 fields)))
-           (setq delta (string-to-number (nth 3 fields)))
-
-           (setq orig-len  (length orig))
-
-           (setq current-string (buffer-substring-no-properties beg end))
-
-           (setq expected-len (+ orig-len delta))
-           (cond ((not (= expected-len (- end beg)))
-                  (message (concat
-                            "Can't revert fragment: %s. "
-                            "Must undo adjacent change first." current-string))
+           (let* (                     ;;     0   1    2    3   4
+                  (fields (pop stack)) ;;  (("4" "41" "47" "3" "ket")
+                  (pass  (string-to-number (nth 0 fields)))
+                  (delta (string-to-number (nth 3 fields)))
+                  (orig  (nth 4 fields))
+                  (orig-len  (length orig))
+                  (expected-len (+ orig-len delta))
+                  (current (buffer-substring-no-properties beg end))
                   )
-                 (t
-                  (kill-region beg end)
-                  (insert orig)
-
-                  ;; mark up restored 'orig' with appropriate stack entry
-                  (let* ((new-end (+ beg orig-len)))
-                    (put-text-property beg new-end 'rep-change-stack stack)
-                    ;; peek up one level to get pass number for right face
-                    (let* ((orig-pass (rep-last-pass stack))
-                           (orig-face (rep-lookup-markup-face orig-pass)) )
-                      (put-text-property beg new-end 'face orig-face) )
+             (cond ((not (= expected-len (- end beg)))
+                    (message
+                     (concat
+                      (format "Can't revert fragment: %s. " current)
+                      "Must undo adjacent change first." ))
                     )
-                  )))
-          )
-    ))
+                   (t
+                    (kill-region beg end)
+                    (insert orig)
+
+                    ;; mark up restored 'orig' with appropriate stack entry
+                    (let ((new-end (+ beg orig-len)))
+                      (put-text-property beg new-end
+                                         'rep-change-stack stack)
+                      ;; to set color correctly, need prev pass number
+                      (let* ((orig-pass (rep-last-pass stack))
+                             (orig-face (rep-lookup-markup-face orig-pass))
+                             )
+                        (put-text-property beg new-end 'face orig-face))
+                      )
+                    )))
+           ))))
 
 (defun rep-last-pass (stack)
    "Peek up the STACK one-level and get the last pass.
@@ -870,5 +899,57 @@ If given STACK is nil, will return nil."
           )
          (t
           nil)))
+
+
+;;--------
+;; utilitites used by other rep-modified-* functions
+
+;; TODO this attempt at centralizing the task of finding beg and end points
+;; could be used more widely, I suspect.  Might want variants of it, too.
+;; Used by: rep-modified-undo-change-here
+(defun rep-modified-extent-of-change ()
+  "Returns the BEG and END of extent of the change at the cursor.
+This looks for the `rep-change-stack' text-property.  If the cursor
+is inside a modified region, this function finds the extent of it.
+Returns a list of the two coordinates (character numbers
+counting from the start of the buffer)."
+;; The difficulty here is that if we're *right* at the start of the change,
+;; "previous-single-property-change" wants to skip us way back to the
+;; previous change.  We have to dance around this irritating behavior.
+  (interactive)
+  (let ( stack beg end peek-back )
+    (setq stack (get-text-property (point) 'rep-change-stack))
+    ;; since stack is defined we are inside a changed region..
+    (cond (stack
+           ;;... but we need to worry about being right at the start
+           ;;of the change.
+           (setq peek-back
+                 (get-text-property (1- (point)) 'rep-change-stack))
+           (cond ((not (equal peek-back stack))
+                  (setq beg (point))
+                  )
+                 (t
+                  (setq beg
+                        (previous-single-property-change (point)
+                                                         'rep-change-stack))
+                  ))
+           (setq end
+                 (next-single-property-change (point)
+                                              'rep-change-stack))
+           ))
+    (list beg end)))
+
+(defun rep-modified-select-change ()
+  "Selects the changed region at point."
+  (interactive)
+  (let* ((pair (rep-modified-extent-of-change))
+         (beg (nth 0 pair))
+         (end (nth 1 pair)))
+    (goto-char beg)
+    (set-mark beg)
+    (goto-char end)
+    (exchange-point-and-mark)
+    ))
+
 
 ;;; rep.el ends here
