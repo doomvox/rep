@@ -155,8 +155,8 @@ sub do_finds_and_reps {
          my $l1 = length( $& );
          my $l2 = length( $s );
          my $delta = $l2 - $l1;
-         # pos now points at the beginning of the match
-         # using a numbering fixed at the start of the s///ge run
+         # in here, pos points at the start of the match, and it uses
+         # char numbering fixed at the start of the s///ge run
          my $p = pos( ${ $text_ref } ) + 1 + $delta_sum;
          my $beg = $p;
          my $end = $p + $l2;
@@ -178,8 +178,8 @@ Example usage (note, revises structure in-place):
 
   revise_locations( $locs );
 
-Compensates for a problem in the change history recorded by
-L<do_finds_and_reps>.
+This compensates for a problem in the change history recorded
+by L<do_finds_and_reps>.
 
 Later passes with another substitution command can move around
 the modified strings from previous passes.
@@ -214,8 +214,8 @@ were any -- would need another 6).
 # So: we crunch through the data in reverse order,
 # and record accumulated deltas, keyed by the location to apply
 # them, i.e. to revise the beg  and end points.
-# The size of earlier deltas is untouched, but
-# the position the earlier deltas act is the revised position.
+# The size of earlier deltas is untouched, but the position
+# the earlier deltas act upon is the revised position.
 
 sub revise_locations {
   my $locs = shift;

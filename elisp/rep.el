@@ -381,23 +381,24 @@ would define the key-strokes \"Alt o S\"."
 (defun rep-open-substitutions ()
   "Open a new substitutions file buffer.
 This is the intended entry-point command.  It should have a
-\"global\" keybinding which will also available in all (or mostly
-all) modes.
+\"global\" keybinding which ideally would be available in all
+\\(or mostly all\\) modes \\(though emacs doesn't make that easy\\).
 
 This will typically open up a file something like this:
 
    .rep/substitutions-832-JDE.rep
 
 Where the sub-directory '.rep' is located in the same place
-as the file it looked like you were about to modify, and the
-unique 3 letter suffix is randomly chosen.
+as the file it was assuming you were about to modify.
+The numeric value in the name is the process id, and
+the unique 3 letter suffix is randomly chosen.
 
 If you have the `rep-standard-substitutions-directory' variable
 set to some location, then the *.rep files will all be located
 there.
 
-The standard prefix (default: \"substitutions\") comes from this
-variable: `rep-standard-substitutions-file-name-prefix'."
+The standard prefix \\(default: \"substitutions\"\\) comes from
+this variable: `rep-standard-substitutions-file-name-prefix'."
   (interactive)
   (let* ((file-location (file-name-directory (buffer-file-name)))
          (dir (or
@@ -436,7 +437,7 @@ Choosing the file name and location is a job for routines such as
            (concat
            "# Enter s///g lines "
            "/e not allowed /g assumed, "
-           "'C-x #' applies to other window") )
+           "C-x# runs on other window") )
          ( template "s///g;" )
          )
     (split-window-vertically number-lines)
@@ -524,18 +525,23 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
           (rep-run-perl-substitutions
            changes-list-file target-file backup-file))
 
-    (cond (data
+    (cond ((not (> (length data) 1))
+           (message "No changes made by substitutions."))
+          ((string-match "^Problem" data) ;; hack to identify error message
+           (message "%s" data))
+          (t
            (rep-markup-target-buffer data target-file-buffer backup-file)
-           ;; (rep-markup-lines changes-list-buffer)
            (rep-markup-substitution-lines changes-list-buffer)
 
            ;; jump to the first change in the modified buffer
-           (goto-char
-            (next-single-property-change
-             (point-min) 'rep-change-stack target-file-buffer))
-           )
-          (t
-           (message "No changes made by substitutions.")) )
+           (let ((spot (next-single-property-change
+                      (point-min) 'rep-change-stack target-file-buffer))
+                 )
+             (cond ((not (integer-or-marker-p spot))
+                    (message "No marked-up changes found in buffer."))
+                    (t
+                     (goto-char spot))))
+           ))
     ))
 
 ;; Used by rep-substitutions-apply-to-other-window
@@ -746,11 +752,16 @@ Acts on the given BUFFER, but leaves the current window active.
 Uses the `rep-previous-versions-stack' buffer local variable."
   (interactive)
   (let* ( (current-buffer-file-name (buffer-file-name))
-          (backup-file (pop rep-previous-versions-stack))
+          (previous-file (pop rep-previous-versions-stack))
           (preserve-stack rep-previous-versions-stack)
                )
-    (copy-file backup-file current-buffer-file-name t)
-    (revert-buffer t t)
+    (cond ((not previous-file)
+           (message "No previous version found on stack."))
+          ((not (file-exists-p previous-file))
+            (message "rep.el backup file not found: %s" previous-file))
+          (t
+           (copy-file previous-file current-buffer-file-name t)
+           (revert-buffer t t)))
 
     ;; covering flakiness in revert-buffer & text properties.
     (font-lock-fontify-buffer)
@@ -768,14 +779,13 @@ Uses the `rep-previous-versions-stack' buffer local variable."
       )
     ))
 
-;; TODO should this make the substitutions window go away?
+;; TODO should this also make the substitutions window go away?
 (defun rep-modified-accept-changes ()
   "Accept changes made in buffer, return to normal state.
 Restores the standard syntax coloring, etc."
   (interactive)
   (let ((file  (buffer-file-name))
         )
-;;    (rep-modified-mode nil)  ;; TODO does this really do anything?
     (rep-modified-mode -1)
     ;; turn font-lock back on if it was on
     (cond (rep-font-lock-buffer-status

@@ -101,7 +101,7 @@ use Emacs::Rep     qw( :all );
 our $VERSION = 0.01;
 my  $prog    = basename($0);
 
-my $DEBUG   = 1;                 # TODO set default to 0 when in production
+my $DEBUG   = 0;                 # TODO set default to 0 when in production
 my ( $locs_temp_file, $reps_file, $backup_file, $target_file );
 GetOptions ("d|debug"           => \$DEBUG,
             "v|version"         => sub{ say_version(); },
@@ -147,14 +147,19 @@ eval {
   $locations_aref =
     do_finds_and_reps( \$text, $find_replaces_aref );
 };
+if ($@) {
+  carp "Problem applying finds and replaces: $@";
+  ($DEBUG) && print STDERR Dumper( $find_replaces_aref ), "\n";
+  rename( $backup_file, $target_file ); # revert to the original
+} else {
+  open my $fout, '>', $target_file or croak "$!";
+  print {$fout} $text;
+  close($fout);
 
-open my $fout, '>', $target_file or croak "$!";
-print {$fout} $text;
-close($fout);
-
-# serialize the data to pass to emacs
-my $flat_locs = flatten_locs( $locations_aref );
-print $flat_locs;
+  # serialize the data to pass to emacs
+  my $flat_locs = flatten_locs( $locations_aref );
+  print $flat_locs;
+}
 
 ### end main, into the subs
 
