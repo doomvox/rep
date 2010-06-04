@@ -449,33 +449,49 @@ This is an alternate entry-point command, much like
   (rep-open-substitutions-file-buffer-internal name )
   )
 
-;; TODO watch out for small starting windows without room to split.
-;; Instead of 10 lines, a percentage of the window?
 (defun rep-open-substitutions-file-buffer-internal ( file )
   "Open a new substitutions file buffer, given the full FILE name.
+This goes through some gyrations to get enough space to create the new
+window without being too obnoxious about it.
 This just handles the window management and template insertion.
 Choosing the file name and location is a job for routines such as
 \\[rep-open-substitutions]."
   (interactive)
-  (let* (( number-lines 10 )
+  (let* (
          ( hint
            (concat
            "# Enter s///g lines "
            "/e not allowed /g assumed, "
            "C-x# runs on other window") )
-         ( template "s///g;" )
+         ( substitution-template "s///g;" )
+         ( f-height (frame-height) )
+         ( w-height (window-body-height) )
+         ( number-lines 10 )
+         ( need-window-lines (round (* 1.5 number-lines)) )
+         ( expansion-limit (- f-height w-height))
+         ( current-deficit (- need-window-lines w-height ))
          )
-    (split-window-vertically number-lines)
+    (cond ((> w-height need-window-lines)
+           (split-window-vertically number-lines)
+          )
+          ((<= current-deficit expansion-limit)
+           (enlarge-window current-deficit)
+           (split-window-vertically number-lines)
+           )
+          (t
+           ;; fall back: enlarge a few lines, cut new window size in half,
+           (enlarge-window 2)
+           (split-window-vertically (round (/ number-lines 2)))
+           )
+          )
     (find-file file)
     (rep-substitutions-mode)
     (insert hint)
-    (insert "\n") ;; portability?
-    (insert template)
+    (insert "\n") ;; check portability?
+    (insert substitution-template)
     (move-beginning-of-line 1)
     (forward-char 2)
     ))
-
-
 
 
 (define-derived-mode rep-substitutions-mode
