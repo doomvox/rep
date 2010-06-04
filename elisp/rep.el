@@ -249,7 +249,7 @@ Used by function \\[rep-lookup-markup-face].")
 ;;--------
 ;; utility functions used by commands below
 
-;; TODO work out how to add an underline to the defface macro,
+;; TODO work out a way to add an underline to the defface macro,
 ;; rather than do it here?  Could adapt to light/dark backgrounds that way.
 (defun rep-lookup-markup-face (pass)
   "Given an integer PASS, returns an appropriate face from \[[rep-face-alist]].
@@ -371,7 +371,8 @@ If the sub-directory does not exist, this will create it. "
 ;;      other window once it's been modified.  This has keybindings to
 ;;      examine, undo, accept or revert the changes.
 
-
+;; TODO Would be nice to have a way to overide the C-x# setting,
+;; and the TAB setting two more optional arguments?  Just punt?
 (defun rep-standard-setup (&optional prefix)
   "A consolidating routine to set-up keybindings and so on.
 If you agree with our ideas about set-up, you can just run this,
@@ -379,7 +380,7 @@ if you'd rather do it yourself, then skip this, and things this code
 will be more unobtrusive by default."
   (unless prefix (setq prefix "\C-c."))
   (rep-define-entry-key  prefix)
-  ;; TODO also use that for the rep-modified-mode (somehow)
+  (rep-define-rep-modified-mode-keybindings prefix)
 
   ;; An alternate entry point: you might just open an existing *.rep file
   (add-to-list
@@ -388,17 +389,8 @@ will be more unobtrusive by default."
 
   (define-key rep-substitutions-mode-map "\C-x#"
     'rep-substitutions-apply-to-other-window)
-
-  (define-rep-modified-mode-keybindings)
 )
 
-
-
-
-
-;; This folderol is silly for a single binding.
-;; Just recommend this:
-;;  (global-set-key "C-c.S" 'rep-open-substitutions)
 (defun rep-define-entry-key (&optional prefix)
   "Defines a global keybinding to open a new substitutions buffer.
 Defaults to \"Control-c . S\".  A different prefix may be given
@@ -523,17 +515,6 @@ that use perl's syntax \(and are interpreted using perl\).
     )
   )
 
-
-;; (use-local-map desktop-recover-mode-map)
-
-;;
-;;  (global-set-key (format "%ss" prefix) 'perlnow-script)
-
-
-
-
-
-
 (define-minor-mode rep-modified-mode
   "Toggle Rep Modified mode.
      With no argument, this command toggles the mode.
@@ -544,14 +525,14 @@ that use perl's syntax \(and are interpreted using perl\).
      to examine and undo the changes made by rep substitutions.
      These are commands such as \\[rep-modified-what-was-changed-here],
      \\[rep-revert-change-here], and \\[rep-modified-revert-all-changes].
-See \\[define-rep-modified-mode-keybindings] (( TODO or... ))."
+See \\[rep-define-rep-modified-mode-keybindings] or \\[rep-standard-setup]."
   ;; The initial value.
   :init-value nil
   ;; The indicator for the mode line.
   :lighter " Rep"
   )
 
-(define-rep-modified-mode-keybindings (&optional prefix)
+(defun rep-define-rep-modified-mode-keybindings (&optional prefix)
   "Defines the keybindings in rep-modified-mode using given PREFIX.
 The PREFIX defaults to the 'C-c .'."
 ;; TODO seems heavy-handed (potential security hole if prefix is untrusted)
@@ -561,18 +542,17 @@ The PREFIX defaults to the 'C-c .'."
            (replace-regexp-in-string
             "%s" prefix
             "'(lambda ()
-    (local-set-key \"%sw\"  'rep-modified-what-was-changed-here)
-    (local-set-key \"%sx\"  'rep-modified-examine-properties-at-point)
-    (local-set-key \"%su\"  'rep-modified-undo-change-here)
-    (local-set-key \"%sR\"  'rep-modified-revert-all-changes)
-    (local-set-key \"%s@\"  'rep-modified-accept-changes)
-    (local-set-key \"\C-i\" 'rep-modified-skip-to-next-change)
+              (local-set-key \"%sw\"  'rep-modified-what-was-changed-here)
+              (local-set-key \"%sx\"  'rep-modified-examine-properties-at-point)
+              (local-set-key \"%su\"  'rep-modified-undo-change-here)
+              (local-set-key \"%sR\"  'rep-modified-revert-all-changes)
+              (local-set-key \"%s@\"  'rep-modified-accept-changes)
+              (local-set-key \"\C-i\" 'rep-modified-skip-to-next-change)
                )"
             ))
          )
     (add-hook 'rep-modified-mode-hook (eval (read define-perl-bindings-string)))
-    )
-  )
+    ))
 
 
 ;;--------
