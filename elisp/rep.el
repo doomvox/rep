@@ -125,13 +125,13 @@ This allows us to remember that font-lock-mode was on, and should be
 re-enabled after changes are accepted.")
 (make-variable-buffer-local 'rep-font-lock-buffer-status)
 
-(defvar rep-standard-substitutions-directory nil
+(defvar rep-default-substitutions-directory nil
   "The location to place newly created files of substitution commands.
 Note: include a trailing slash.
 If this is nil, then a sub-directory named \".rep\" will
 be created in parallel with the file to be modified.")
 
-(defvar rep-standard-substitutions-file-name-prefix "substitutions"
+(defvar rep-default-substitutions-file-name-prefix "substitutions"
   "This is used to name newly created files of substitution commands.
 By default, the name would typically be something like
 \"substitutions-DJE.rep\".")
@@ -374,8 +374,9 @@ If the sub-directory does not exist, this will create it. "
 
 (defun rep-standard-setup (&optional prefix)
   "A consolidating routine to set-up keybindings and so on.
-If you want things simple, you can just run this,
-if you prefer un-obtrusiveness, then you don't."
+If you agree with our ideas about set-up, you can just run this,
+if you'd rather do it yourself, then skip this, and things this code
+will be more unobtrusive by default."
   (unless prefix (setq prefix "\C-c."))
   (rep-define-entry-key  prefix)
   ;; TODO also use that for the rep-modified-mode (somehow)
@@ -387,6 +388,8 @@ if you prefer un-obtrusiveness, then you don't."
 
   (define-key rep-substitutions-mode-map "\C-x#"
     'rep-substitutions-apply-to-other-window)
+
+  (define-rep-modified-mode-keybindings)
 )
 
 
@@ -423,18 +426,18 @@ as the file it was assuming you were about to modify.
 The numeric value in the name is the process id, and
 the unique 3 letter suffix is randomly chosen.
 
-If you have the `rep-standard-substitutions-directory' variable
+If you have the `rep-default-substitutions-directory' variable
 set to some location, then the *.rep files will all be located
 there.
 
 The standard prefix \\(default: \"substitutions\"\\) comes from
-this variable: `rep-standard-substitutions-file-name-prefix'."
+this variable: `rep-default-substitutions-file-name-prefix'."
   (interactive)
   (let* ((file-location (file-name-directory (buffer-file-name)))
          (dir (or
-               rep-standard-substitutions-directory
+               rep-default-substitutions-directory
                (rep-sub-directory file-location)))
-         (name rep-standard-substitutions-file-name-prefix )
+         (name rep-default-substitutions-file-name-prefix )
          (ext  "rep" )
          (pid (number-to-string (emacs-pid)))
          (suffix (rep-generate-random-suffix))
@@ -492,7 +495,7 @@ that use perl's syntax \(and are interpreted using perl\).
   (use-local-map rep-substitutions-mode-map)
   )
 
-(define-minor-mode rep-modified-mode
+(define-minor-mode rep-modified-oldstyle-mode
   "Toggle Rep Modified mode.
      With no argument, this command toggles the mode.
      Non-null prefix argument turns on the mode.
@@ -520,6 +523,56 @@ that use perl's syntax \(and are interpreted using perl\).
     )
   )
 
+
+;; (use-local-map desktop-recover-mode-map)
+
+;;
+;;  (global-set-key (format "%ss" prefix) 'perlnow-script)
+
+
+
+
+
+
+(define-minor-mode rep-modified-mode
+  "Toggle Rep Modified mode.
+     With no argument, this command toggles the mode.
+     Non-null prefix argument turns on the mode.
+     Null prefix argument turns off the mode.
+
+     When Rep Modified mode is enabled, key bindings are defined
+     to examine and undo the changes made by rep substitutions.
+     These are commands such as \\[rep-modified-what-was-changed-here],
+     \\[rep-revert-change-here], and \\[rep-modified-revert-all-changes].
+See \\[define-rep-modified-mode-keybindings] (( TODO or... ))."
+  ;; The initial value.
+  :init-value nil
+  ;; The indicator for the mode line.
+  :lighter " Rep"
+  )
+
+(define-rep-modified-mode-keybindings (&optional prefix)
+  "Defines the keybindings in rep-modified-mode using given PREFIX.
+The PREFIX defaults to the 'C-c .'."
+;; TODO seems heavy-handed (potential security hole if prefix is untrusted)
+;; but this should work to start with at least
+  (unless prefix (setq prefix "\C-c."))
+  (let ( (define-perl-bindings-string
+           (replace-regexp-in-string
+            "%s" prefix
+            "'(lambda ()
+    (local-set-key \"%sw\"  'rep-modified-what-was-changed-here)
+    (local-set-key \"%sx\"  'rep-modified-examine-properties-at-point)
+    (local-set-key \"%su\"  'rep-modified-undo-change-here)
+    (local-set-key \"%sR\"  'rep-modified-revert-all-changes)
+    (local-set-key \"%s@\"  'rep-modified-accept-changes)
+    (local-set-key \"\C-i\" 'rep-modified-skip-to-next-change)
+               )"
+            ))
+         )
+    (add-hook 'rep-modified-mode-hook (eval (read define-perl-bindings-string)))
+    )
+  )
 
 
 ;;--------
