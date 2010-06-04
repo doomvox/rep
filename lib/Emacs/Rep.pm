@@ -137,8 +137,8 @@ See L<revise_locations>.
 =cut
 
 sub do_finds_and_reps {
-  my $text_ref = shift;
-  my $find_replaces = shift; # aref of aref, a series of pairs
+  my $text_ref      = shift;
+  my $find_replaces = shift; # aref of aref: a series of pairs
 
   my @locations;
   my $pass = 0;
@@ -146,7 +146,7 @@ sub do_finds_and_reps {
     my ($find_pat, $replace) = @{ $sub_pair };
 
     my @pass = ();
-    my $delta_sum = 0; # running total of deltas for the pass
+    my $delta_sum = 0;  # running total of deltas for the pass
     ${ $text_ref } =~
       s{$find_pat}
        {

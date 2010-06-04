@@ -37,18 +37,27 @@
 ;; Note that these needs should be taken care of by installing the
 ;; Emacs-Rep CPAN package.  See the README file inside that package.
 
-;; Add the following into your ~/.emacs (or equivalent):
+;; Just add the following into your ~/.emacs (or equivalent):
+;;   (require 'rep)
+;;   (rep-standard-setup)
+
+;; Or you can use this longer form:
 ;;   (require 'rep)
 ;;   (global-set-key "C-c.S" 'rep-open-substitutions)
+;;   (add-to-list
+;;    'auto-mode-alist
+;;    '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
+;;   (define-key rep-substitutions-mode-map "\C-x#"
+;;     'rep-substitutions-apply-to-other-window)
 
 ;; Then, when editing a file you'd like to modify interactively
-;; using perl substitution commands (i.e. s///g;), you can use
-;; "C-c.S" to open a small window associated with a *.rep file,
-;; suitable for entering a series of substitution commands.
-;; When you're ready, "C-x#" will run these substitutions on
-;; the other window.  The usual font-lock syntax coloring will
-;; be temporarily shut-off, so that changed strings can be
-;; indicated with colors that correspond to the particular
+;; using perl substitution commands (usually of the from s///g;),
+;; you can use "C-c.S" to open a small window associated with a
+;; *.rep file, suitable for entering a series of substitution
+;; commands.  When you're ready, "C-x#" will run these
+;; substitutions on the other window.  The usual font-lock syntax
+;; coloring will be temporarily shut-off, so that changed strings
+;; can be indicated with colors that correspond to the particular
 ;; s///g command that made the change.
 
 ;; The modified file has a "rep-modified-mode" minor mode switched on
@@ -240,7 +249,7 @@ Used by function \\[rep-lookup-markup-face].")
 ;;--------
 ;; utility functions used by commands below
 
-;; TODO work out how add an underline to the defface macro,
+;; TODO work out how to add an underline to the defface macro,
 ;; rather than do it here?  Could adapt to light/dark backgrounds that way.
 (defun rep-lookup-markup-face (pass)
   "Given an integer PASS, returns an appropriate face from \[[rep-face-alist]].
@@ -363,14 +372,35 @@ If the sub-directory does not exist, this will create it. "
 ;;      examine, undo, accept or revert the changes.
 
 
+(defun rep-standard-setup (&optional prefix)
+  "A consolidating routine to set-up keybindings and so on.
+If you want things simple, you can just run this,
+if you prefer un-obtrusiveness, then you don't."
+  (unless prefix (setq prefix "\C-c."))
+  (rep-define-entry-key  prefix)
+  ;; TODO also use that for the rep-modified-mode (somehow)
+
+  ;; An alternate entry point: you might just open an existing *.rep file
+  (add-to-list
+   'auto-mode-alist
+   '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
+
+  (define-key rep-substitutions-mode-map "\C-x#"
+    'rep-substitutions-apply-to-other-window)
+)
+
+
+
+
+
 ;; This folderol is silly for a single binding.
 ;; Just recommend this:
 ;;  (global-set-key "C-c.S" 'rep-open-substitutions)
-(defun rep-define-global-key-binding (&optional prefix)
+(defun rep-define-entry-key (&optional prefix)
   "Defines a global keybinding to open a new substitutions buffer.
 Defaults to \"Control-c . S\".  A different prefix may be given
 as an argument, for example:
-  (rep-define-global-key-binding \"M-o\")
+  (rep-define-entry-key \"M-o\")
 would define the key-strokes \"Alt o S\"."
   (interactive) ;; DEBUG
   (unless prefix (setq prefix "\C-c."))
@@ -450,10 +480,8 @@ Choosing the file name and location is a job for routines such as
     (forward-char 2)
     ))
 
-;; An alternate entry point: you might just open an existing *.rep file
-(add-to-list
- 'auto-mode-alist
- '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
+
+
 
 (define-derived-mode rep-substitutions-mode
   cperl-mode "rep-substitutions"
@@ -463,8 +491,6 @@ that use perl's syntax \(and are interpreted using perl\).
 \\{rep-substitutions-mode-map}"
   (use-local-map rep-substitutions-mode-map)
   )
-(define-key rep-substitutions-mode-map "\C-x#"
-  'rep-substitutions-apply-to-other-window)
 
 (define-minor-mode rep-modified-mode
   "Toggle Rep Modified mode.

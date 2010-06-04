@@ -140,8 +140,8 @@ my $text;
   close( $fin );
 }
 
-# Apply the finds and replaces to text, recording the history
-# of the changes
+# Apply the finds and replaces to text, recording the
+# change meta-data
 my $locations_aref;
 eval {
   $locations_aref =
@@ -150,7 +150,7 @@ eval {
 if ($@) {
   carp "Problem applying finds and replaces: $@";
   ($DEBUG) && print STDERR Dumper( $find_replaces_aref ), "\n";
-  rename( $backup_file, $target_file ); # revert to the original
+  rename( $backup_file, $target_file ); # rollback!
 } else {
   open my $fout, '>', $target_file or croak "$!";
   print {$fout} $text;
