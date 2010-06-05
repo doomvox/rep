@@ -8,7 +8,7 @@ rep.pl - perform a series of find an replaces
 
 =head1 SYNOPSIS
 
-  perl rep.pl --backup <backup_file> --substitutions <substitutions_file> --target <file_to_act_on>
+  perl rep.pl --backup <backup_file> --substitutions <filename> --target <file_to_act_on>
 
   perl rep.pl -b <backup_file> -f <file_to_act_on> 's/foo/bar'
 
@@ -48,35 +48,34 @@ replaced to perform undo operations.
 The elisp code must choose a unique backup file name. This makes
 it possible to do reverts of an entire run of substitutions.
 
-  perl rep.pl --backup <backup_file> --substitutions <substitutions_file> --target <file_to_act_on>
+The script returns a serialized data dump of the history
+of the changes to the text.  See the documentation routine
+L<serialize_change_metadata> in L<Emacs::Rep> for full
+details of this output format.
 
-The script returns a serialized data dump of the history of the changes to the text,
-in a form that looks like this:
+Roughly, you can expect output that looks like:
 
   0:303:308:1:cars;
-  1:83:116:8:of;
   1:113:123:8:of;
-  1:171:181:8:of;
   1:431:441:8:of;
   1:596:606:8:of;
-  2:61:86:23:.;
   2:330:355:23:.;
-  2:639:664:23:.;
-  2:889:914:23:.;
   3:702:711:0:evening;
   4:855:863:4:cane;
 
-The first field corresponds to the "pass" through the file (one pass per substitution command)
-The second and third fields are the begin and end points of the changed strings, counting from 1.
-The fourth field is the size of the "delta", the change in length due to the modification.
-The fifth field is the originally matched string, before the change.
-Note: this field may contain a colon.  Any separators after the fourth should be ignored.
+Where the colon separated fields are:
 
-(( documentation inside Rep.pm is more up-to-date
-   TODO
-   centralize that somewhere.
-   A lone pod file?
-))
+ first: the "pass" through the file (one pass per substitution command)
+ second: begin point of changed string
+ third:  end point of changed string
+ fourth: the delta, the change in string length
+ fifth: the original string that was replaced
+
+Characters are counted from the beginning of the text,
+starting with 1.
+
+The fifth field may contain colons, but semicolons should be
+escaped with a backslash.
 
 =cut
 
@@ -98,7 +97,7 @@ use lib ("$Bin/../lib",
          "$HOME/End/Cave/Rep/Wall/Emacs-Rep/scripts/../lib"); # TODO
 use Emacs::Rep     qw( :all );
 
-our $VERSION = 0.01;
+our $VERSION = 0.02;
 my  $prog    = basename($0);
 
 my $DEBUG   = 0;                 # TODO set default to 0 when in production
@@ -126,13 +125,19 @@ if( $reps_file ) {
 
 # process the find_and_reps into an array of find and replace
 # pairs (modifiers get moved inside the find.)
-my $find_replaces_aref =
-  parse_perl_substitutions( \$reps_text );
+my $find_replaces_aref;
+eval {
+  $find_replaces_aref =
+    parse_perl_substitutions( \$reps_text );
+};
+if ($@) {
+  carp "Problem parsing perl substitutions: $@";
+  exit;
+}
 
-# Note: don't do rename this until after the substitutions parse.
-# (possibly: on failure, will need to undo this -- TODO)
 rename( $target_file, $backup_file ) or
   croak "can't copy $target_file to $backup_file: $!";
+
 my $text;
 { undef $/;
   open my $fin, '<', $backup_file or croak "$!";
@@ -149,7 +154,6 @@ eval {
 };
 if ($@) {
   carp "Problem applying finds and replaces: $@";
-  ($DEBUG) && print STDERR Dumper( $find_replaces_aref ), "\n";
   rename( $backup_file, $target_file ); # rollback!
 } else {
   open my $fout, '>', $target_file or croak "$!";
@@ -157,7 +161,7 @@ if ($@) {
   close($fout);
 
   # serialize the data to pass to emacs
-  my $flat_locs = flatten_locs( $locations_aref );
+  my $flat_locs = serialize_change_metadata( $locations_aref );
   print $flat_locs;
 }
 

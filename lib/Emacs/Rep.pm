@@ -64,7 +64,7 @@ our %EXPORT_TAGS = ( 'all' => [
       do_finds_and_reps
       split_perl_substitutions
       parse_perl_substitutions
-      flatten_locs
+      serialize_change_metadata
       revise_locations
 
       strip_brackets
@@ -77,7 +77,7 @@ our %EXPORT_TAGS = ( 'all' => [
 
 our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
 our @EXPORT = qw(  );
-our $VERSION = '0.02';
+our $VERSION = '0.02';  # TODO manually revise rep.pl and rep.el versions to match
 
 =item do_finds_and_reps
 
@@ -140,33 +140,58 @@ sub do_finds_and_reps {
   my $text_ref      = shift;
   my $find_replaces = shift; # aref of aref: a series of pairs
 
+  my $opts = shift;
+  my $LIVE_DANGEROUSLY = $opts->{ LIVE_DANGEROUSLY };
+
+  my $text_copy;
+  unless( $LIVE_DANGEROUSLY ) {
+    $text_copy = ${ $text_ref };
+  }
+
   my @locations;
   my $pass = 0;
-  foreach my $sub_pair ( @{ $find_replaces } ) {
-    my ($find_pat, $replace) = @{ $sub_pair };
+  eval {
+    foreach my $sub_pair ( @{ $find_replaces } ) {
+      my ($find_pat, $replace) = @{ $sub_pair };
 
-    my @pass = ();
-    my $delta_sum = 0;  # running total of deltas for the pass
-    ${ $text_ref } =~
-      s{$find_pat}
-       {
-         my $s = eval "return qq{$replace}";
-         # ($DEBUG) && print STDERR "match: $&, 1st: $1, subst: $s\n";
-         my $l1 = length( $& );
-         my $l2 = length( $s );
-         my $delta = $l2 - $l1;
-         # in here, pos points at the start of the match, and it uses
-         # char numbering fixed at the start of the s///ge run
-         my $p = pos( ${ $text_ref } ) + 1 + $delta_sum;
-         my $beg = $p;
-         my $end = $p + $l2;
-         push @pass, [$beg, $end, $delta, $&];
-         $delta_sum += $delta;
-         $s
-       }ge;
+      my @pass = ();
+      my $delta_sum = 0; # running total of deltas for the pass
 
-    push @locations, \@pass;
-    $pass++;
+      ${ $text_ref } =~
+        s{$find_pat}
+         {
+           my $s = eval "return qq{$replace}";
+           # ($DEBUG) && print STDERR "match: $&, 1st: $1, subst: $s\n";
+           my $l1 = length( $& );
+           my $l2 = length( $s );
+           my $delta = $l2 - $l1;
+           # in here, pos points at the start of the match, and it uses
+           # char numbering fixed at the start of the s///ge run
+           my $p = pos( ${ $text_ref } ) + 1 + $delta_sum;
+           my $beg = $p;
+           my $end = $p + $l2;
+           push @pass, [$beg, $end, $delta, $&];
+           $delta_sum += $delta;
+           $s
+         }ge;
+
+      push @locations, \@pass;
+      $pass++;
+    }
+  };
+  if ($@) {
+    # We pass on the error message via STDOUT so that it
+    # won't mess up the output of a test (the elisp call
+    # shell-command-to-string merges STDERR into it's return
+    # anyway)
+    # The elisp function rep-run-perl-substitutions distinguishes
+    # an error message via the prefix "Problem".
+    print "Problem: $@\n";
+    # roll-back
+    @locations = ();
+    unless( $LIVE_DANGEROUSLY ) {
+      ${ $text_ref } = $text_copy;
+    }
   }
   revise_locations( \@locations );
   return \@locations; # aref of aref of arefs of pairs
@@ -241,7 +266,7 @@ sub revise_locations {
   } # end foreach pass
 }
 
-=item flatten_locs
+=item serialize_change_metadata
 
 Serialize the locations data structure into a text form to be
 passed to emacs.
@@ -270,7 +295,7 @@ data interchange format.
 
 =cut
 
-sub flatten_locs {
+sub serialize_change_metadata {
   my $locations = shift;
   my $ret = '';
 
