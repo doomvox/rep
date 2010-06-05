@@ -397,7 +397,7 @@ will be more unobtrusive by default."
     'rep-substitutions-apply-to-other-window)
   (define-key rep-substitutions-mode-map (format "%sr" prefix)
     'rep-substitutions-apply-to-other-window)
-)
+  )
 
 (defun rep-define-entry-key (&optional prefix)
   "Defines a global keybinding to open a new substitutions buffer.
@@ -582,7 +582,6 @@ The PREFIX defaults to the 'C-c .'."
 
 ;;--------
 ;; rep-substitutions-mode function(s)
-
 (defun rep-substitutions-apply-to-other-window ()
   "Two buffers must be open, the changes_list and the file to act on,
 with the changes_list selected.
@@ -683,7 +682,6 @@ are made throughout the TARGET-FILE as though the /g modifier was
 used on all of them.  The original file is saved as the given BACKUP-FILE."
   (let* (
          (rep-pl "rep.pl")
-
          ;; TODO SOON probe system for program, provide informative error message.
          ;; TODO capture stderr somehow?
          (perl-rep-cmd
@@ -772,17 +770,16 @@ Acts on the given BUFFER, but leaves the current window active."
 
 
 ;; TODO can be confused by embedded semicolons. I suspect,
+;;      (or if not this, something else might be...)
+;; Used by rep-substitutions-apply-to-other-window
 (defun rep-markup-substitution-lines (buffer)
   "Mark-up the substitution lines in the given BUFFER.
-Uses a the line number with rep-lookup-markup-face to
-Assigns a color to each substitution command in the buffer,
+Uses the line number with rep-lookup-markup-face to
+Assign a color to each substitution command in the buffer,
 \(by counting from the top and feeding the position number
 to \\[rep-lookup-markup-face]\).
-
-Presumes all substitution commands begin with ^s.
-
-Acts on the given BUFFER, but leaves the current window active.
-"
+Presumes all substitution commands begin with \"s\".
+Acts on the given BUFFER, but leaves the current window active."
   (save-excursion ;; but that trick *never* works... so don't trust it
     (let* ( (original-buffer (current-buffer))
             (comment_pat  "^\s*?#")

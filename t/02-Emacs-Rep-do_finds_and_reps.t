@@ -45,7 +45,7 @@ BEGIN {
   is( $text, $expected_text,
              "$test_name: first case" );
 
-  my $report = flatten_locs( $locs );
+  my $report = serialize_change_metadata( $locs );
   ($DEBUG) && print "report:\n$report\n";
 
 my $expected_report=<<"EXPECTORANT";
@@ -57,7 +57,7 @@ EXPECTORANT
 # was:
 # 2:594:597:-7:individual
 
-  is( $report, $expected_report, "Testing flatten_locs" );
+  is( $report, $expected_report, "Testing serialize_change_metadata" );
 }
 
 {
@@ -88,13 +88,13 @@ EXPECTORANT
 
   ($DEBUG) && print "substitutions\n: $substitutions\n";
 
-  my $report_1 = flatten_locs( $locs );
+  my $report_1 = serialize_change_metadata( $locs );
   ($DEBUG) && print "report before revise_locations:\n$report_1\n";
 
   revise_locations( $locs );
   ($DEBUG) && print "revised locs: ", Dumper( $locs ), "\n";
 
-  my $report_2 = flatten_locs( $locs );
+  my $report_2 = serialize_change_metadata( $locs );
   ($DEBUG) && print "report after revise_locations:\n$report_2\n";
 
    my $expected_revlocs = define_expected_locs( 'second_revised' );
@@ -136,13 +136,13 @@ EXPECTORANT
   ($DEBUG) && print "substitutions\n: $substitutions\n";
 
   ($DEBUG) && print "third locs: ", Dumper( $locs );
-  my $report_1 = flatten_locs( $locs );
+  my $report_1 = serialize_change_metadata( $locs );
 #  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
 
   revise_locations( $locs );
   ($DEBUG) && print "revised locs: ", Dumper( $locs );
 
-  my $report_2 = flatten_locs( $locs );
+  my $report_2 = serialize_change_metadata( $locs );
 #  ($DEBUG) && print "report before revise_locations:\n$report_2\n";
 
    my $expected_revlocs = define_expected_locs( 'third_revised' );
