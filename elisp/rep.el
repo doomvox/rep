@@ -113,6 +113,11 @@
 ;;---------
 ;;  User Options, Variables
 
+(defvar rep-version "0.02"
+ "Version number of the rep.el elisp file, which should be kept
+in sync with the rep.pl script and the Rep.pm \(Emacs::Rep\)
+perl library.")
+
 (defcustom rep-underline-changes-color nil
   "If this is set to a color name such as \"red\" then the
 substitution changes will also be underlined in that color.  If
@@ -272,7 +277,7 @@ Underlining may be turned on with `rep-underline-changes-color'."
         (t
          nil)))
 
-;; TODO   Instead of this function, could've used dired's
+;; TODO   Instead of this hack, could've used dired's
 ;; "dired-split" which is even closer to perl's split (can use a regexp):
 ;;   (dired-split PAT STR &optional LIMIT)
 (defun rep-split-limited (delimiter line limit)
@@ -387,7 +392,10 @@ will be more unobtrusive by default."
    'auto-mode-alist
    '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
 
+  ;; two forms of "do-it" for the substitutions: C-x# and C-c.r
   (define-key rep-substitutions-mode-map "\C-x#"
+    'rep-substitutions-apply-to-other-window)
+  (define-key rep-substitutions-mode-map (format "%sr" prefix)
     'rep-substitutions-apply-to-other-window)
 )
 
@@ -563,6 +571,7 @@ The PREFIX defaults to the 'C-c .'."
               (local-set-key \"%su\"  'rep-modified-undo-change-here)
               (local-set-key \"%sR\"  'rep-modified-revert-all-changes)
               (local-set-key \"%s@\"  'rep-modified-accept-changes)
+              (local-set-key \"%sA\"  'rep-modified-accept-changes)
               (local-set-key \"\C-i\" 'rep-modified-skip-to-next-change)
                )"
             ))
