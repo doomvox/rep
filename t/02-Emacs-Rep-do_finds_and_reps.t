@@ -9,7 +9,7 @@ my $DEBUG = 0;             # TODO set to 0 before ship
 use Data::Dumper::Perltidy;
 
 use Test::More;
-BEGIN { plan tests => 10 }; # TODO revise test count
+BEGIN { plan tests => 13 }; # TODO revise test count
 
 use FindBin qw( $Bin );
 use lib "$Bin/../lib";
@@ -151,6 +151,50 @@ EXPECTORANT
 
 }
 
+{
+  my $test_name = "Testing revise_locations";
+  my $case_name = "4th case: string with semi-colons";
+
+  my $substitutions = define_substitution_cases( 'fourth' );
+  ($DEBUG) && print "substitutions (fourth)", Dumper( $substitutions ), "\n";;
+
+  my $find_reps =
+    parse_perl_substitutions( \$substitutions );
+  ($DEBUG) && print "parsed s cmds", Dumper( $find_reps ), "\n";
+
+  my $text = define_text( 'main_text' );
+
+  my $locs =
+        do_finds_and_reps( \$text, $find_reps );
+
+  ($DEBUG) && print "change history:", Dumper( $locs );
+  ($DEBUG) && print "changed text: ", Dumper( $text );
+
+  my $expected = define_expected_locs( 'fourth' );
+  is_deeply( $locs, $expected,
+             "Testing do_finds_and_reps: locs $case_name" );
+
+  my $expected_text = define_expected_text( 'fourth' );
+  is( $text, $expected_text,
+             "Testing do_finds_and_reps: $case_name" );
+
+  ($DEBUG) && print "substitutions\n: $substitutions\n";
+
+  ($DEBUG) && print "fourth locs: ", Dumper( $locs );
+  my $report_1 = serialize_change_metadata( $locs );
+#  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
+
+  revise_locations( $locs );
+  ($DEBUG) && print "revised locs: ", Dumper( $locs );
+
+  my $report_2 = serialize_change_metadata( $locs );
+#  ($DEBUG) && print "report before revise_locations:\n$report_2\n";
+
+   my $expected_revlocs = define_expected_locs( 'fourth' );
+   is_deeply( $locs, $expected_revlocs,
+              "$test_name: $case_name" );
+
+}
 
 
 
@@ -188,11 +232,18 @@ END_S2
    s|CHAPTER|Chapped|;
 END_S3
 
+# munging strings with semi-colons
+  my $fourth_substitutions=<<'END_S3';
+   s/individual; the/individual!; --The/g;
+END_S3
+
+
   my $cases =
     {
      first  => $first_substitutions,
      second => $second_substitutions,
      third  => $third_substitutions,
+     fourth => $fourth_substitutions,
       };
 
   my $substitutions = $cases->{ $type };
@@ -313,6 +364,11 @@ sub define_expected_locs {
     [ [ 423, 427, 2, 'in' ], [ 700, 704, 2, 'in' ], [ 773, 777, 2, 'in' ] ],
     [ [ 6,   13,  0, 'CHAPTER' ] ]
 ],
+  'fourth' =>
+    [
+          [ [ 605, 623, 3, 'individual; the' ] ]
+
+    ],
 
     };
 
@@ -377,7 +433,23 @@ were ready to leave. And it was all DOOMED. An important social event was coming
 two men dressed skin women\'s clothes. And it was all DOOMED. One was a tall, gray-haired skindividual; the
 other a stocky, square-faced man who leaned heavily upon a stout vibrator as he
 descended the steps. And it was all DOOMED. The two men paused as they reached the sidewalk.
-'
+',
+
+      'fourth' => '     CHAPTER I
+
+     FOOTSTEPS TO CRIME
+
+     IT was midnight. From the brilliance of one of Washington\'s broad avenues,
+the lights of a large embassy building could be seen glowing upon the sidewalks
+of the street on which it fronted.
+     Parked cars lined the side street. One by one they were moving from their
+places, edging to the space in front of the embassy, where departing guests
+were ready to leave. An important social event was coming to its close.
+     The broad steps of the embassy were plainly lighted. Upon them appeared
+two men dressed in evening clothes. One was a tall, gray-haired individual!; --The
+other a stocky, square-faced man who leaned heavily upon a stout cane as he
+descended the steps. The two men paused as they reached the sidewalk.
+',
 
       };
 
