@@ -522,34 +522,6 @@ that use perl's syntax \(and are interpreted using perl\).
   (use-local-map rep-substitutions-mode-map)
   )
 
-(define-minor-mode rep-modified-oldstyle-mode
-  "Toggle Rep Modified mode.
-     With no argument, this command toggles the mode.
-     Non-null prefix argument turns on the mode.
-     Null prefix argument turns off the mode.
-
-     When Rep Modified mode is enabled, key bindings are defined
-     to examine and undo the changes made by rep substitutions.
-     These are commands such as
-         \\[rep-modified-what-was-changed-here]
-         \\[rep-revert-change-here]
-         \\[rep-modified-revert-all-changes]    "
-  ;; The initial value.
-  :init-value nil
-  ;; The indicator for the mode line.
-  :lighter " Rep"
-  ;; The minor mode bindings.
-  :keymap
-  '(
-    ("\C-c.w" . rep-modified-what-was-changed-here)
-    ("\C-c.x" . rep-modified-examine-properties-at-point)
-    ("\C-c.u" . rep-modified-undo-change-here)
-    ("\C-c.R" . rep-modified-revert-all-changes)
-    ("\C-c.@" . rep-modified-accept-changes)
-    ("\C-i"   . rep-modified-skip-to-next-change)
-    )
-  )
-
 (define-minor-mode rep-modified-mode
   "Toggle Rep Modified mode.
      With no argument, this command toggles the mode.
