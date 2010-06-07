@@ -77,7 +77,7 @@ our %EXPORT_TAGS = ( 'all' => [
 
 our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
 our @EXPORT = qw(  );
-our $VERSION = '0.02';  # TODO manually revise rep.pl and rep.el versions to match
+our $VERSION = '0.03';  # TODO manually revise rep.pl and rep.el versions to match
 
 =item do_finds_and_reps
 
