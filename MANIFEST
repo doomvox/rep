@@ -8,6 +8,6 @@ elisp/rep.el
 t/01-Emacs-Rep-parse_perl_substitutions.t
 t/02-Emacs-Rep-do_finds_and_reps.t
 t/03-Emacs-Rep-strip_brackets.t
-t/04-Emacs-Rep-split_perl_substitutions.t
+t/04-Emacs-Rep-do_finds_and_reps-bad_pattern.t
 Makefile.PL
 META.yml

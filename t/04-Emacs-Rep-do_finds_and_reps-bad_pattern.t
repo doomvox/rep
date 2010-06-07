@@ -47,7 +47,7 @@ PERL_CODE
 
 # Note below, a find pattern with a missing escape on an open square bracket
   my $substitutions=<<'END_S';
-n# Enter s///g lines /e not allowed /g assumed, 'C-x #' applies to other window
+# Enter s///g lines /e not allowed /g assumed, 'C-x #' applies to other window
 s/sucks/needs improvement/g;
 s/!/.../g;
 s/the jerk/that human/g;

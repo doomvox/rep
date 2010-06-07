@@ -6,8 +6,11 @@ Revision history for Emacs-Rep
         not supported, in particular substitutions with embedded
         semicolons may behave oddly.
 
-0.02    Tue Jun  1 00:57:44 2010
+0.02    Sun Jun  6 17:36:22 2010
         Using a PPI-based solution now.  The full range of perl's
-        substitution syntax is now supported (including the insane
-        one).
+        substitution syntax is now supported.
+        Have support for multi-line substitutions.
+        Window management is more careful (no crashes
+        from the current window being too small).
+        User set-up is more flexible (easy to use an alternative key prefix).
 

@@ -328,12 +328,23 @@ The escaping backslashes are removed."
                ))
         (setq line (substring text beg end))
         (setq line
-              (replace-regexp-in-string "\\\\" "" line))
+              (replace-regexp-in-string "\\\\;" ";" line))
         (push line lines)
         (setq beg (string-match "^" text end))
         ))
     (setq lines (nreverse lines))
     lines))
+
+
+;; (rep-split-on-semicolon-delimited-lines
+;; "1:2:3:4:five-eh;
+;; 5:6:7:8:end-oh-line-eh;
+;; 9:10:11:12:you\\;me\\;and...;
+;; 13,14,15,16:and line the last;
+;; ")
+;; looks okay:
+;; ("1:2:3:4:five-eh" "5:6:7:8:end-oh-line-eh" "9:10:11:12:you;me;and..." "13,14,15,16:and line the last")
+
 
 (defun rep-sub-directory (file-location)
   "Given a directory, returns path to a '.rep' sub-directory.
@@ -698,7 +709,9 @@ used on all of them.  The original file is saved as the given BACKUP-FILE."
          data
          )
     (cond (check
+           (message "%s" perl-rep-cmd);; DEBUG
            (setq data (shell-command-to-string perl-rep-cmd))
+           (message "%s" data) ;; DEBUG
            ))
     data))
 
@@ -714,6 +727,7 @@ Highlights the changes using different color faces."
   (push backup-file rep-previous-versions-stack)
 
   (setq substitution-lines (rep-split-on-semicolon-delimited-lines data))
+  ;; I think this unwhacks semi-cs, right after splitting...
 
   (dolist (line  substitution-lines)
     (cond ((not (string-equal "" line)) ;; skip blank lines
@@ -724,17 +738,28 @@ Highlights the changes using different color faces."
                   (beg    (string-to-number (nth 1 fields)))
                   (end    (string-to-number (nth 2 fields)))
                   (delta  (string-to-number (nth 3 fields)))
-                  (orig   (nth 4 fields))
+                  (orig   (nth 4 fields)) ;; TODO good place to unwhack semi-cs...
                   (markup-face (rep-lookup-markup-face pass))
                   (len    (+ (length orig) delta) )
-                  ;; initialize with the existing stack
-                  (stack
-                   (get-text-property beg 'rep-change-stack target-buffer))
+                  stack
                   )
              (put-text-property beg end 'face markup-face target-buffer)
+
+;; TODO an experimental property to keep track of the extent of the
+;; *latest* changes (the top of the stack).
+
+             (put-text-property beg end 'rep-change-extent line)
+
+;; TODO really, can potentially have a different stack at every character,
+;; so can't just work with the whole extent like this.
+
+             ;; initialize with the existing stack
+             (setq stack
+                   (get-text-property beg 'rep-change-stack target-buffer))
              (push fields stack)
              ;; save stack off as text property
              (put-text-property beg end 'rep-change-stack stack target-buffer)
+
              )))))
 
 ;; Used by rep-substitutions-apply-to-other-window
@@ -1030,6 +1055,7 @@ counting from the start of the buffer)."
            ))
     (list beg end)))
 
+;; debug tool
 (defun rep-modified-select-change ()
   "Selects the changed region at point."
   (interactive)
@@ -1040,6 +1066,25 @@ counting from the start of the buffer)."
     (set-mark beg)
     (goto-char end)
     (exchange-point-and-mark)
+    ))
+
+;; debug tool
+(defun rep-modified-select-change-given-record ( record )
+  "Selects the changed region, given a line of change meta-data."
+  (interactive "s:Change meta-data record: ")
+  (let* ( (fields (rep-split-limited ":" record 5) )
+          (pass   (string-to-number (nth 0 fields)))
+          (beg    (string-to-number (nth 1 fields)))
+          (end    (string-to-number (nth 2 fields)))
+          (delta  (string-to-number (nth 3 fields)))
+          (orig   (nth 4 fields)) ;; TODO good place to unwhack semi-cs...
+          )
+    ; select the indicated region
+    (goto-char beg)
+    (set-mark beg)
+    (goto-char end)
+    (exchange-point-and-mark)
+    (message "Was: %s" orig)
     ))
 
 

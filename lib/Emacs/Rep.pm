@@ -160,7 +160,8 @@ sub do_finds_and_reps {
       ${ $text_ref } =~
         s{$find_pat}
          {
-           my $s = eval "return qq{$replace}";
+           my $s = eval "return qq{$replace}"; # TODO no need for return? # eval qq{ $replace };
+#           my $s = eval qq{ $replace }; # but just using this breaks 02-*.t
            # ($DEBUG) && print STDERR "match: $&, 1st: $1, subst: $s\n";
            my $l1 = length( $& );
            my $l2 = length( $s );
@@ -304,7 +305,8 @@ sub serialize_change_metadata {
     foreach my $row ( @{ $pass } ) {
       my ($beg, $end, $delta, $orig) = @{ $row };
 
-      $orig =~ s{;}{\\}xmsg;
+      # escape any semicolons
+      $orig =~ s{;}{\\;}xmsg;
 
       $ret .= sprintf "%d:%d:%d:%d:%s;\n",
         $pass_count, $beg, $end, $delta, $orig;

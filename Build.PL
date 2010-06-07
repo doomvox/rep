@@ -12,6 +12,7 @@ my $builder = Module::Build->new(
         'Test::More'             => 0,
         'FindBin'                => 0,
         'lib'                    => 0,
+        'Test::Trap'             => 0,
       },
     requires => {
         'PPI'            => 0,
@@ -19,6 +20,7 @@ my $builder = Module::Build->new(
         'warnings'       => 0,
         'Carp'           => 0,
         'Data::Dumper'   => 0,
+        'Exporter'       => 0,
       },
     add_to_cleanup      => [ 'Emacs-Rep-*' ],
     create_makefile_pl => 'traditional',
