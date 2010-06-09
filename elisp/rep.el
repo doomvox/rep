@@ -97,10 +97,8 @@
 ;;  Additionally, there's the command:
 
 ;;    "C-c.x"   rep-modified-examine-properties-at-point
-;;              This is more informative than C-c.w, but less neat:
-;;              this can be used to look at the whole rep-change-stack,
-;;              which might help when multiple cascading changes have
-;;              taken place in the same location.
+;;              This is more informative than C-c.w, but less neat.
+;;              (( there's also an existing elisp widget that does this ))
 
 ;;; Code:
 
@@ -117,6 +115,9 @@
  "Version number of the rep.el elisp file, which should be kept
 in sync with the rep.pl script and the Rep.pm \(Emacs::Rep\)
 perl library.")
+
+(defvar rep-debug t
+  "Set to t to enable some debug messages.")
 
 (defcustom rep-underline-changes-color nil
   "If this is set to a color name such as \"red\" then the
@@ -278,7 +279,7 @@ Underlining may be turned on with `rep-underline-changes-color'."
          nil)))
 
 ;; TODO   Instead of this hack, could've used dired's
-;; "dired-split" which is even closer to perl's split (can use a regexp):
+;; "dired-split" which is quite close to perl's split:
 ;;   (dired-split PAT STR &optional LIMIT)
 (defun rep-split-limited (delimiter line limit)
   "Split LINE on DELIMITER into no more than LIMIT fields.
@@ -573,7 +574,6 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
   (interactive)
   (let* (
          pass perl-rep-cmd data
-              substitution-lines
 
               (changes-list-file    (buffer-file-name))
               (changes-list-buffer  (current-buffer))
@@ -601,12 +601,13 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
 
            ;; jump to the first change in the modified buffer
            (let ((spot (next-single-property-change
-                      (point-min) 'rep-change-stack target-file-buffer))
+                        (point-min)
+                        'rep-last-change target-file-buffer))
                  )
              (cond ((not (integer-or-marker-p spot))
                     (message "No marked-up changes found in buffer."))
-                    (t
-                     (goto-char spot))))
+                   (t
+                    (goto-char spot))))
            ))
     ))
 
@@ -616,7 +617,6 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
 If `rep-standard-backup-location' is non-nil, it will be used
 as the standard location for backups, otherwise, a \".rep\"
 sub-directory will be used in parallel with the FILE."
-
   (interactive)
   (let* ((file-location (file-name-directory file))
          (name          (file-name-nondirectory file))
@@ -628,13 +628,14 @@ sub-directory will be used in parallel with the FILE."
          (pid (number-to-string (emacs-pid)))
          (full-file-name (concat dir "/" name "-" pid "-" suffix "." ext))
          )
-
     (while (file-exists-p full-file-name)
        (setq suffix (rep-generate-random-suffix))
        (setq full-file-name (concat dir "/" name "-" pid "-" suffix "." ext))
        )
     full-file-name))
 
+;; TODO any need for condition-case?  What if there's no "which"?
+;; Could set this up with an "and" to short-circuit, no?
 (defun rep-probe-for-program (program)
   "Probe the system for the given external PROGRAM."
   (let* (
@@ -665,7 +666,6 @@ are made throughout the TARGET-FILE as though the /g modifier was
 used on all of them.  The original file is saved as the given BACKUP-FILE."
   (let* (
          (rep-pl "rep.pl")
-         ;; TODO SOON probe system for program, provide informative error message.
          ;; TODO capture stderr somehow?
          (perl-rep-cmd
                (format
@@ -681,16 +681,20 @@ used on all of them.  The original file is saved as the given BACKUP-FILE."
          data
          )
     (cond (check
-           (message "%s" perl-rep-cmd);; DEBUG
+           (if rep-debug
+               (message "%s" perl-rep-cmd))
            (setq data (shell-command-to-string perl-rep-cmd))
-           (message "%s" data) ;; DEBUG
+           (if rep-debug
+               (message "%s" data))
            ))
     data))
 
 ;; Used by rep-substitutions-apply-to-other-window
 (defun rep-markup-target-buffer (data target-buffer backup-file)
   "Applies the given change DATA to the TARGET-BUFFER.
-Highlights the changes using different color faces."
+Highlights the changes using different color faces.
+This version works with the raw, serialized data returned from
+the rep.pl call."
   (set-buffer target-buffer)
   (revert-buffer t t t) ;;last option is "preserve-modes", what does it do?
   (font-lock-mode -1)
@@ -698,10 +702,41 @@ Highlights the changes using different color faces."
 
   (push backup-file rep-previous-versions-stack)
 
-  (setq substitution-lines (rep-split-on-semicolon-delimited-lines data))
-  ;; I think this unwhacks semi-cs, right after splitting...
+  (let ((substitution-lines (rep-split-on-semicolon-delimited-lines data))
+                             ;; also unwhacks quoted semi-cs
+        )
+        (dolist (line  substitution-lines)
+          (cond ((not (string-equal "" line)) ;; skip blank lines
+                 ;; split each line into five fields
+                 (let* (
+                        (fields (rep-split-limited ":" line 5) )
+                        (pass   (string-to-number (nth 0 fields)))
+                        (beg    (string-to-number (nth 1 fields)))
+                        (end    (string-to-number (nth 2 fields)))
+                        (delta  (string-to-number (nth 3 fields)))
+                        (orig   (nth 4 fields))
+                        (record (list pass beg end delta orig))
+                        (markup-face (rep-lookup-markup-face pass))
+                        (len    (+ (length orig) delta) )
+                        stack
+                        )
+                   (put-text-property beg end 'face markup-face target-buffer)
 
-  (dolist (line  substitution-lines)
+                   ;; TODO under development
+                   ;; Q: why not use record not fields (string-to-number values)
+                   (put-text-property beg end 'rep-last-change fields)
+;;TODO X           (rep-push-change-stack beg end target-buffer fields)
+                   ))))))
+
+
+(defun rep-unserialize-change-metadata (data)
+  "Converts the raw, serialized DATA from rep.pl to a lisp data structure.
+TODO describe the output structure.  Q: does this stash it in a bufflocvar?"
+  (let* ( change-metadata
+          (substitution-lines (rep-split-on-semicolon-delimited-lines data))
+          ;; also unwhacks quoted semi-cs
+          )
+  (dolist (line (nreverse substitution-lines))
     (cond ((not (string-equal "" line)) ;; skip blank lines
            ;; split each line into five fields
            (let* (
@@ -710,43 +745,85 @@ Highlights the changes using different color faces."
                   (beg    (string-to-number (nth 1 fields)))
                   (end    (string-to-number (nth 2 fields)))
                   (delta  (string-to-number (nth 3 fields)))
-                  (orig   (nth 4 fields)) ;; TODO good place to unwhack semi-cs...
-                  (markup-face (rep-lookup-markup-face pass))
-                  (len    (+ (length orig) delta) )
-                  stack
+                  (orig   (nth 4 fields))
+                  ;; (len    (+ (length orig) delta) )
                   )
-             (put-text-property beg end 'face markup-face target-buffer)
+             (push (list pass beg end delta orig) change-metadata)
+              ))))
+  change-metadata))
 
-;; TODO an experimental property to keep track of the extent of the
-;; *latest* changes (the top of the stack).
 
-             (put-text-property beg end 'rep-change-extent line)
+;; TODO X DELETE?
+(defun rep-push-change-stack (beg end buffer record)
+  "Push the RECORD onto the stack for each char in BUFFER between BEG and END.
+The stack is saved as the text property `rep-change-stack'."
+  ;; TODO write one of these?
+  ;;   (rep-verify-locs-in-buffer beg end buffer)
+    (let ((i beg))
+      (while (< i end)
+        (let ((stack
+               (get-text-property i 'rep-change-stack buffer)))
+              (push record stack)
+              (put-text-property i (1+ i) 'rep-change-stack stack buffer))
+        (setq i (1+ i))
+        )))
 
-;; TODO really, can potentially have a different stack at every character,
-;; so can't just work with the whole extent like this.
+;; TODO X DELETE?
+(defun rep-pop-change-stack (beg end buffer)
+  "Pop the `rep-change-stack' on each char between BEG and END in BUFFER.
+Warns if the entire extent between BEG and END does not have the same
+value on top of the stack." ;; TODO should it throw error?
+  (let (last this)
+    (let ((i beg))
+      (while (< i end)
+        (let (
+              ;; up-one
+              (stack
+               (get-text-property i 'rep-change-stack buffer)))
+          (setq this (pop stack))
 
-             ;; initialize with the existing stack
-             (setq stack
-                   (get-text-property beg 'rep-change-stack target-buffer))
-             (push fields stack)
-             ;; save stack off as text property
-             (put-text-property beg end 'rep-change-stack stack target-buffer)
+          (cond ((> i beg)  ;; can't check this if "last" not initialized yet
+                 (unless (eq last this)
+                   (message
+                    "Stack problem at char %d this %s not same as last %s"
+                    i this last))))
 
-             )))))
+          (setq last this)
+          (put-text-property i (1+ i) 'rep-change-stack stack buffer)
+          )
+        (setq i (1+ i))
+        ))
+    ;; Also update last-change throughout the range
+;;    (setq up-one (rep-peek-up-stack stack))
+;;    (put-text-property beg end 'rep-last-change up-one buffer)
+    (put-text-property beg end 'rep-last-change this buffer)
+    this))
+
+;; TODO what's the right way?
+;; I don't know which end of a list is "top of stack"
+;; Answer: "car" or "nth 0" both hit the "pop" end.
+(defun rep-peek-up-stack (stack)
+  "Peek up the STACK one-level and return last record.
+If given STACK is nil, will return nil."
+   (cond (stack
+          (let* ((fields (pop stack)))
+            fields))
+         (t
+          nil)))
 
 ;; Used by rep-substitutions-apply-to-other-window
 (defun rep-markup-lines (buffer)
   "Mark-up the lines in the given BUFFER.
 Uses the line number with rep-lookup-markup-face to assign a color.
 Acts on the given BUFFER, but leaves the current window active."
+  ;; if font-lock-mode was on, save that information
+  (setq rep-font-lock-buffer-status font-lock-mode)
   (save-excursion ;; but that trick *never* works... so don't trust it
     (let* ( (original-buffer (current-buffer))
             line-number markup-face
             (lines-left 1)
             )
       (set-buffer buffer)
-      ;; if font-lock-mode was on, save that information
-      (setq rep-font-lock-buffer-status font-lock-mode)
       (font-lock-mode -1) ;; turns off font-lock unconditionally
       (goto-char (point-min))
       (setq line-number 0)
@@ -765,9 +842,6 @@ Acts on the given BUFFER, but leaves the current window active."
       )
     ))
 
-
-;; TODO can be confused by embedded semicolons. I suspect,
-;;      (or if not this, something else might be...)
 ;; Used by rep-substitutions-apply-to-other-window
 (defun rep-markup-substitution-lines (buffer)
   "Mark-up the substitution lines in the given BUFFER.
@@ -777,6 +851,8 @@ Assign a color to each substitution command in the buffer,
 to \\[rep-lookup-markup-face]\).
 Presumes all substitution commands begin with \"s\".
 Acts on the given BUFFER, but leaves the current window active."
+  ;; if font-lock-mode was on, save that information
+  (setq rep-font-lock-buffer-status font-lock-mode)
   (save-excursion ;; but that trick *never* works... so don't trust it
     (let* ( (original-buffer (current-buffer))
             (comment_pat  "^\s*?#")
@@ -787,8 +863,6 @@ Acts on the given BUFFER, but leaves the current window active."
             markup-face
             )
       (set-buffer buffer)
-      ;; if font-lock-mode was on, save that information
-      (setq rep-font-lock-buffer-status font-lock-mode)
       (font-lock-mode -1) ;; turns off font-lock unconditionally
       (goto-char (point-min))
 
@@ -843,7 +917,8 @@ Uses the `rep-previous-versions-stack' buffer local variable."
 
     ;; covering flakiness in revert-buffer & text properties.
     (font-lock-fontify-buffer)
-    (put-text-property (point-min) (point-max) 'rep-change-stack ())
+;; TODO X DELELTE?
+;;    (put-text-property (point-min) (point-max) 'rep-change-stack ())
     ;; in case you want to revert another step up the stack
     (rep-modified-mode t)
     (setq rep-previous-versions-stack preserve-stack)
@@ -857,7 +932,6 @@ Uses the `rep-previous-versions-stack' buffer local variable."
       )
     ))
 
-;; TODO should this also make the substitutions window go away?
 (defun rep-modified-accept-changes ()
   "Accept changes made in buffer, return to normal state.
 Restores the standard syntax coloring, etc."
@@ -869,6 +943,7 @@ Restores the standard syntax coloring, etc."
     (cond (rep-font-lock-buffer-status
            (font-lock-mode 1)
            (font-lock-fontify-buffer)
+           (local-set-key "\C-i" 'indent-according-to-mode)
            ))
     (save-buffer)
     ;; also restore cperl syntax colors in substitutions window
@@ -888,17 +963,17 @@ Restores the standard syntax coloring, etc."
   "Skip to next region modified by a substitution."
   (interactive)
   ;; Check if we're inside a changed region first
-  (let* ( (stack (get-text-property (point) 'rep-change-stack))
+  (let* ( (stack (get-text-property (point) 'rep-last-change))
           )
     (cond (stack  ;;   ;; we are inside a changed region and must get out first
            (goto-char
             (1+
-             (next-single-property-change (point) 'rep-change-stack)))
+             (next-single-property-change (point) 'rep-last-change)))
            ))
     ;; jump to the next changed region
     (goto-char
      (next-single-property-change
-      (point) 'rep-change-stack))
+      (point) 'rep-last-change))
     ))
 
 (defun rep-modified-examine-properties-at-point ()
@@ -914,75 +989,89 @@ Restores the standard syntax coloring, etc."
 Looks at the changed string under the cursor, or if not defined
 there, tries to advance the cursor to the next change."
   (interactive)
-  (let* ( (stack (get-text-property (point) 'rep-change-stack))
+  (let* ( (last-change (get-text-property (point) 'rep-last-change))
           )
-    (cond ( (not stack)  ;;   ;; we are not yet inside a changed region
+    (cond ( (not last-change) ;; we are not yet inside a changed region
             (goto-char
-             (next-single-property-change (point) 'rep-change-stack))
+             (next-single-property-change (point) 'rep-last-change))
+            (setq last-change (get-text-property (point) 'rep-last-change))
             ))
-    (let* ( (fields (pop stack))
-            (orig  (nth 4 fields))
-            (pass  (string-to-number (nth 0 fields)))
-            )
-      (push fields stack) ;; TODO 98% certain this is silly
-      (message "Before substitution %s this was: %s" (1+ pass) orig)
-      )))
+    (message "Before substitution %s this was: %s" (1+ pass) last-change)
+    ;; TODO cleaner to unpack the 5th field, yes?
+    ))
 
+;; TODO really need
+;;        (1) to use rep-last-change to get extent       (DONE)
+;;    and (2) need to pop the stack at *every character* (( eh ))
 (defun rep-modified-undo-change-here ()
   "Undos the individual rep substitution change under the cursor.
 Undos the change at point, or if none is there, warns and does nothing.
 Note that this has nothing to do with the usual emacs \"undo\"
 system, which operates completely independently."
   (interactive)
-  (let* ((pair (rep-modified-extent-of-change))
+  (let* ((pair (rep-modified-extent-of-change)) ;; now uses rep-last-change
          (beg (nth 0 pair))
          (end (nth 1 pair))
-         (stack (get-text-property (point) 'rep-change-stack))
+         stack
          )
-    (cond ((not (and stack beg end))
+    (cond ((not (and beg end))
            (message "No changed region to undo at point.")
            )
           (t
-           (let* (                     ;;     0   1    2    3   4
-                  (fields (pop stack)) ;;  (("4" "41" "47" "3" "ket")
+           (let* (
+;;                  (fields (pop stack)) ;;  (("4" "41" "47" "3" "ket")
+                  (fields
+                   (get-text-property beg 'rep-last-change))
+
+                  ;; TODO push need to do s-to-n elsewhere
                   (pass  (string-to-number (nth 0 fields)))
                   (delta (string-to-number (nth 3 fields)))
                   (orig  (nth 4 fields))
                   (orig-len  (length orig))
                   (expected-len (+ orig-len delta))
-                  (current (buffer-substring-no-properties beg end))
+                  (existing (buffer-substring-no-properties beg end))
                   )
              (cond ((not (= expected-len (- end beg)))
-                    (message
-                     (concat
-                      (format "Can't revert fragment: %s. " current)
-                      "Must undo adjacent change first." ))
-                    )
+                    (message (concat
+                      (format "Can't revert fragment: %s. " existing)
+                      "Must undo adjacent change first." )) )
                    (t
+
+;; TODO X DELETE?
+;;                     ;; note we're looking at stack just at start of range
+;;                     (setq stack
+;;                           (get-text-property beg 'rep-change-stack))
+;;                     (setq record
+;;                           (rep-pop-change-stack beg end (current-buffer)))
+;;                     ;; values of record should match fields: spot check
+;;                     (cond ((not (string= orig (nth 4 record)))
+;;                            (message
+;;                             "rep-last-change: %s pop rep-change-stack: %s"
+;;                             orig (nth 4 record))
+;;                            ))
+
                     (kill-region beg end)
                     (insert orig)
 
-                    ;; mark up restored 'orig' with appropriate stack entry
-                    (let ((new-end (+ beg orig-len)))
-                      (put-text-property beg new-end
-                                         'rep-change-stack stack)
-                      ;; to set color correctly, need prev pass number
-                      (let* ((orig-pass (rep-last-pass stack))
-                             (orig-face (rep-lookup-markup-face orig-pass))
-                             )
-                        (put-text-property beg new-end 'face orig-face))
-                      )
-                    )))
+                     (let ((new-end (+ beg orig-len)))
+                       ;; to set color correctly, need prev pass number
+                       (let* ((orig-pass (rep-last-pass stack))
+                              (orig-face (rep-lookup-markup-face orig-pass))
+                              )
+                         (put-text-property beg new-end 'face orig-face))
+                       )
+
+                     )))
            ))))
 
+;; same as (car (car stack)), right?
 (defun rep-last-pass (stack)
-   "Peek up the STACK one-level and get the last pass.
-If given STACK is nil, will return nil."
+   "Peek up the STACK one-level and get the last pass number.
+If given STACK is nil, will return nil.  STACK is unmodified."
    (cond (stack
-          (let* ((fields (pop stack))
+          (let* ((fields (pop stack))  ;; TODO could just car
                  (last-pass (string-to-number (nth 0 fields)))
                  )
-            (push fields stack) ;; TODO is this needed?  I be tired.
             last-pass)
           )
          (t
@@ -993,11 +1082,12 @@ If given STACK is nil, will return nil."
 ;; utilitites used by other rep-modified-* functions
 
 ;; TODO this attempt at centralizing the task of finding beg and end points
-;; could be used more widely, I suspect.  Might want variants of it, too.
+;; could be used more widely, I suspect.
+;; TODO Might want variants: skip-to-next, etc.
 ;; Used by: rep-modified-undo-change-here
 (defun rep-modified-extent-of-change ()
   "Returns the BEG and END of extent of the change at the cursor.
-This looks for the `rep-change-stack' text-property.  If the cursor
+This looks for the `rep-last-change' text-property.  If the cursor
 is inside a modified region, this function finds the extent of it.
 Returns a list of the two coordinates (character numbers
 counting from the start of the buffer)."
@@ -1006,24 +1096,24 @@ counting from the start of the buffer)."
 ;; previous change.  We have to dance around this irritating behavior.
   (interactive)
   (let ( stack beg end peek-back )
-    (setq stack (get-text-property (point) 'rep-change-stack))
+    (setq stack (get-text-property (point) 'rep-last-change))
     ;; since stack is defined we are inside a changed region..
     (cond (stack
            ;;... but we need to worry about being right at the start
-           ;;of the change.
+           ;; of the change.
            (setq peek-back
-                 (get-text-property (1- (point)) 'rep-change-stack))
+                 (get-text-property (1- (point)) 'rep-last-change))
            (cond ((not (equal peek-back stack))
                   (setq beg (point))
                   )
                  (t
                   (setq beg
                         (previous-single-property-change (point)
-                                                         'rep-change-stack))
+                           'rep-last-change))
                   ))
            (setq end
                  (next-single-property-change (point)
-                                              'rep-change-stack))
+                    'rep-last-change))
            ))
     (list beg end)))
 
