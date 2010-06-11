@@ -77,7 +77,7 @@ our %EXPORT_TAGS = ( 'all' => [
 
 our @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
 our @EXPORT = qw(  );
-our $VERSION = '0.03';  # TODO manually revise rep.pl and rep.el versions to match
+our $VERSION = '0.03';  # TODO manually sync-up rep.pl and rep.el versions
 
 =item do_finds_and_reps
 
@@ -105,33 +105,35 @@ $locations_aref =
 
 The returned history is an aref of aref of arefs, e.g.
 
- [
-  [ [ 3,       9,   -4,  'alpha'],
-    [ 39,     47,   10,  'ralpha'],
-    [ 111,   130,    0,  'XXX'],
-    [ 320,   332,  -33,  'blvd'],
-  ],
-  [ [ 12,     23,   6,  'widget'],
-    [ 33,     80,   6,  'wadget'],
-    [ 453,   532,   6,  'wandat'],
-  ],
- ]
+  [
+    [
+     [ 219,  229, 6, 'jerk'],
+     [ 649,  659, 6, 'jerk'],
+     [1978, 1988, 6, 'jerk'],
+   ],
+   [
+     [ 402,  408, -3, 'conniving'],
+     [1620, 1626, -3, 'conniving'],
+   ],
+   [
+     [ 110,  118, -1, 'tasteless'],
+     [ 494,  502, -1, 'tasteless'],
+     [1672, 1680, -1, 'tasteless'],
+     [1697, 1705, -1, 'Tasteless'],
+   ],
+  ]
 
-Each sub-array here contains the locations of changes made by
-each substitution, where each change is recorded as start and
-end points in the form of integers specifying the number of
-the character counting from the start of the file, where the
-first character is 1.
+The sub-arrays are records of changes made by a substitution.
+The change meta-data included is, in order: the beginning and
+end points, the delta (change in length), and the original
+string.
 
-The third integer is the "delta", the change in length of the
-string after modification.
+The start and end points are in the form of integers counting
+from the start of the file, where the first character is 1.
 
-The fourth field is the the string that was matched, before
-it was modified.
-
-These changed locations are recorded *during* each pass, which
-means that later passes can mess up the numbering.  We then
-compensate for this internally, using the recorded deltas.
+Note that the change locations are recorded *during* each pass,
+which means that later passes throw off the numbering, but we
+compensate for this internally using the recorded deltas.
 See L<revise_locations>.
 
 =cut
@@ -181,12 +183,11 @@ sub do_finds_and_reps {
     }
   };
   if ($@) {
-    # We pass on the error message via STDOUT so that it
-    # won't mess up the output of a test (the elisp call
-    # shell-command-to-string merges STDERR into it's return
-    # anyway)
-    # The elisp function rep-run-perl-substitutions distinguishes
-    # an error message via the prefix "Problem".
+    # Send error message to STDOUT so that it won't mess up test output.
+    # (and anyway, the elisp call shell-command-to-string merges in STDERR)
+    #
+    # The elisp function rep-run-perl-substitutions uses prefix "Problem".
+    # to spot error messages
     print "Problem: $@\n";
     # roll-back
     @locations = ();
@@ -286,13 +287,8 @@ The fields:
   orig  -- the original string that was replaced.
 
 The trailine semi-colon in this format allows it to work easily
-on strings with embedded newlines, and embedded semi-colons as well.
-However, an embedded semi-colon with an immediately following embedded
-newline *must* be backslash escaped.  This routine just escapes all
-semi-colons in this field.
-
-TODO move this documentation to some place that talks about it as a
-data interchange format.
+on strings with embedded newlines.  Any embedded semi-colons,
+will be backslash escaped by this routine.
 
 =cut
 
