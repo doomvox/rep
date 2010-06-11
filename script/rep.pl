@@ -10,7 +10,7 @@ rep.pl - perform a series of find an replaces
 
   perl rep.pl --backup <backup_file> --substitutions <filename> --target <file_to_act_on>
 
-  perl rep.pl -b <backup_file> -f <file_to_act_on> 's/foo/bar'
+  perl rep.pl -b <backup_file> -f <file_to_act_on> 's/foo/bar/'
 
 =head2 USAGE
 
@@ -106,7 +106,7 @@ GetOptions ("d|debug"           => \$DEBUG,
             "v|version"         => sub{ say_version(); },
             "h|?|help"          => sub{ say_usage();   },
             "s|substitutions=s" => \$reps_file,
-            "B|backup=s"        => \$backup_file,
+            "b|backup=s"        => \$backup_file,
             "f|target=s"        => \$target_file,
            ) or say_usage();
 
@@ -170,7 +170,28 @@ if ($@) {
 sub say_usage {
   my $usage=<<"USEME";
    $prog <-options> <arguments>
-     TODO fill-in usage statement
+
+  Options:
+
+     -s                substitutions list file
+     --substitutions   same
+     -f                target file name to be modified
+     --target          same
+     -b                backup file name
+     --backup          same
+
+     -d                debug messages on
+     --debug           same
+     -h                help (show usage)
+     -v                show version
+     --version         show version
+
+Typical use:
+
+  perl rep.pl -b "/tmp/edit_this.txt.bak" -f "edit_this.txt" 's/foo/bar/'
+
+  perl rep.pl --backup <backup_file> --substitutions <filename> --target <file_to_act_on>
+
 USEME
   print "$usage\n";
   exit;
