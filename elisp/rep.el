@@ -28,41 +28,55 @@
 
 ;;; Commentary:
 
-;; If it isn't there already, put this file (rep.el) into your load-path.
+;; "Rep" is a system for doing global finds and replaces throughout
+;; a file with a set of perl substitution commands (that is, "s///g").
 
-;; You will also need the script "rep.pl" to be located somewhere
-;; in your system PATH, and the Emacs::Rep perl module
-;; (i.e. the file Emacs/Rep.pm) installed somewhere that rep.pl
-;; can find it (e.g. a location in your PERL5LIB environment variable).
-;; Note that these needs should be taken care of by installing the
-;; Emacs-Rep CPAN package.  See the README file inside that package.
+;; This elisp code is the interactive front-end, which uses perl
+;; code as a back-end to execute the changes, so you get to use
+;; actual perl5 regexps, and you have (almost) all of the features
+;; of perl substitutions.
+
+;; Features include the ability to reject individual changes,
+;; or to revert all of the changes and start over.
+
+;; INSTALLATION and SET-UP
+
+;; If it isn't there already, put this file (rep.el) somewhere in
+;; your emacs load-path.
+
+;; If possible, you should just install the Emacs-Rep CPAN
+;; package (and see the README file inside that package).
+
+;; Otherwise, you will also need to make sure the script "rep.pl"
+;; to be located somewhere in your system PATH, and the Emacs::Rep
+;; perl module (i.e. the file Emacs/Rep.pm) is installed somewhere
+;; that rep.pl can find it (e.g. a location in your PERL5LIB
+;; environment variable).
 
 ;; Just add the following into your ~/.emacs (or equivalent):
 ;;   (require 'rep)
 ;;   (rep-standard-setup)
 
-;; Or you can use this longer form:
-;;   (require 'rep)
-;;   (global-set-key "C-c.S" 'rep-open-substitutions)
-;;   (add-to-list
-;;    'auto-mode-alist
-;;    '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
-;;   (define-key rep-substitutions-mode-map "\C-x#"
-;;     'rep-substitutions-apply-to-other-window)
+;; For setup customization alternatives to the "rep-standard-setup",
+;; see SET-UP CUSTOMIZATION below.
 
-;; Then, when editing a file you'd like to modify interactively
-;; using perl substitution commands (usually of the from s///g;),
-;; you can use "C-c.S" to open a small window associated with a
-;; *.rep file, suitable for entering a series of substitution
-;; commands.  When you're ready, "C-x#" will run these
-;; substitutions on the other window.  The usual font-lock syntax
-;; coloring will be temporarily shut-off, so that changed strings
-;; can be indicated with colors that correspond to the particular
-;; s///g command that made the change.
+;; USAGE
 
-;; The modified file has a "rep-modified-mode" minor mode switched on
-;; with keybindings to do various useful tasks as you evaluate the
-;; changes made by your substitutions.
+;; When editing a file you'd like to modify interactively
+;; using perl substitution commands (usually of the from
+;; s///g;), you can use "C-c.S" to open a small window suitable
+;; for entering a series of substitution commands. When you're
+;; ready, "C-c.R" will run these substitutions on the other
+;; window.
+
+;; The usual font-lock syntax coloring will be temporarily
+;; shut-off, so that changed strings can be indicated with
+;; colors that correspond to the particular s///g command that
+;; made the change.
+
+;; In the buffer for the modified file a "rep-modified-mode" minor
+;; mode has been switched on with keybindings to do various useful
+;; tasks as you evaluate the changes made by your substitutions.
 
 ;;    TAB       rep-modified-skip-to-next-change
 ;;              You can easily skip to the next change with the tab key.
@@ -84,7 +98,7 @@
 ;;              on the same file-buffer, repeated uses of this
 ;;              command will continue reverting the previous run.
 
-;;     "C-c.@"  rep-modified-accept-changes
+;;     "C-c.A"  rep-modified-accept-changes
 ;;              When you're convinced that the substitutions run did
 ;;              what you wanted, you can use this to accept the changes
 ;;              and get your normal syntax coloring back.
@@ -98,7 +112,54 @@
 
 ;;    "C-c.x"   rep-modified-examine-properties-at-point
 ;;              This is more informative than C-c.w, but less neat.
-;;              (( there's also an existing elisp widget that does this ))
+
+
+;; SET-UP CUSTOMIZATION
+
+;; The easy way to get the standard (i.e. documented) behavior
+;; is just to use (rep-standard-setup)
+
+;; If you'd like different behavior, here are some hints:
+
+;; You can choose a different standard key prefix (other than the
+;; default "Control-c .") easily enough like so:
+
+;;   (rep-standard-setup "\C-c|")  ;; "Control-c vertical-bar"
+
+;; The standard set-up is roughly equivalent to the following
+;; (so you can start with this and edit it as you like):
+
+;;   (global-set-key "C-c.S" 'rep-open-substitutions)
+;;   (add-to-list
+;;    'auto-mode-alist
+;;    '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
+;;   (define-key rep-substitutions-mode-map "\C-c.R"
+;;     'rep-substitutions-apply-to-other-window)
+;;   (rep-define-rep-modified-mode-keybindings "\C-c.")
+
+;; And that last line can be expanded still further, into
+;; something like:
+
+;;     (add-hook 'rep-modified-mode-hook
+;;           '(lambda ()
+;;              (local-set-key "%sw"  'rep-modified-what-was-changed-here)
+;;              (local-set-key "%sx"  'rep-modified-examine-properties-at-point)
+;;              (local-set-key "%su"  'rep-modified-undo-change-here)
+;;              (local-set-key "%sR"  'rep-modified-revert-all-changes)
+;;              (local-set-key "%sA"  'rep-modified-accept-changes)
+;;              (local-set-key "\C-i" 'rep-modified-skip-to-next-change)
+;;              ))
+
+;; For more information:
+
+;; Web pages about this code:
+;;    http://obsidianrook.com/rep
+
+;; The CPAN Emacs-Rep package:
+;;    http://search.cpan.org/search?query=Emacs%3A%3ARep&mode=all
+
+;; The latest code:
+;;   http://github.com/doomvox/rep
 
 ;;; Code:
 
@@ -116,6 +177,7 @@
 in sync with the rep.pl script and the Rep.pm \(Emacs::Rep\)
 perl library.")
 
+;; TODO always set to nil before shipping code
 (defvar rep-debug t
   "Set to t to enable some debug messages.")
 
@@ -167,15 +229,6 @@ The fields in each record: pass, beg, end, delta, orig,
 all integers except for orig, which is a string.")
 (make-variable-buffer-local 'rep-change-metadata)
 (put 'rep-change-metadata 'risky-local-variable t)
-
-;; TODO actually: is this needed? NO DELETE.
-(defvar rep-change-undone ()
-  "Buffer local stash recording changes that were manually undone.
-This is a list-of-lists, with the usual change record, for each
-change that's been flagged with the \\[rep-modified-undo-change-here]
-command, and has not yet been processed.")
-(make-variable-buffer-local 'rep-change-undone)
-(put 'rep-change-undone 'risky-local-variable t)
 
 ;;--------
 ;; colorized faces used to mark-up changes
@@ -230,7 +283,6 @@ command, and has not yet been processed.")
  "Faces keyed by number (an integer to font association).
 Used by function \\[rep-lookup-markup-face].")
 ;; hardcoded generation of look-up table (stupid, but simple)
-;; TODO modify the rep-make-face macro to generate this table?
 (setq rep-face-alist
       '(
         (00 . rep-00-face)
@@ -272,8 +324,6 @@ Used by function \\[rep-lookup-markup-face].")
 ;;--------
 ;; utility functions used by commands below
 
-;; TODO work out a way to add an underline to the defface macro,
-;; rather than do it here?  Could adapt to light/dark backgrounds that way.
 (defun rep-lookup-markup-face (pass)
   "Given an integer PASS, returns an appropriate face from \[[rep-face-alist]].
 These faces are named rep-NN-face where NN is a two-digit integer.
@@ -400,23 +450,23 @@ If the sub-directory does not exist, this will create it. "
 
 ;; This systems "controllers" come in three stages:
 ;;  (1) a global key binding to create and edit a new substitutions file-buffer.
-;;  (2) a rep-substitutions-mode, with C-x# binding to apply to other window.
+;;  (2) a rep-substitutions-mode, with C-c.R binding to apply to other window.
 ;;  (3) a rep-modified-mode: a minor-mode automatically enabled in that
 ;;      other window once it's been modified.  This has keybindings to
-;;      examine, undo, accept or revert the changes.
+;;      examine, undo, revert or accept the changes.
 
-;; TODO Would be nice to have a way to overide the C-x# setting,
-;; and the TAB setting two more optional arguments?  Just punt?
 (defun rep-standard-setup (&optional prefix)
   "A consolidating routine to set-up keybindings and so on.
 If you agree with our ideas about set-up, you can just run this,
-if you'd rather do it yourself, then skip this, and things this code
-will be more unobtrusive by default."
+if you'd rather do it yourself, then skip this: this code
+is unobtrusive by default."
+  (cond ((rep-probe-for-rep-pl)
+         (message "rep.pl must be in PATH for rep.el to work.")
+         ))
   (unless prefix (setq prefix "\C-c."))
   (rep-define-entry-key  prefix)
   (rep-define-rep-modified-mode-keybindings prefix)
 
-  ;; An alternate entry point: you might just open an existing *.rep file
   (add-to-list
    'auto-mode-alist
    '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
@@ -499,7 +549,7 @@ Choosing the file name and location is a job for routines such as
            (concat
            "# Enter s///g lines "
            "/e not allowed /g assumed, "
-           "C-x# runs on other window") )
+           "C-c.R runs on other window") )
          ( substitution-template "s///g;" )
          ( f-height (frame-height) )
          ( w-height (window-body-height) )
@@ -561,7 +611,7 @@ See \\[rep-define-rep-modified-mode-keybindings] or \\[rep-standard-setup]."
   "Defines the keybindings in rep-modified-mode using given PREFIX.
 The PREFIX defaults to the 'C-c .'."
 ;; TODO seems heavy-handed (potential security hole if prefix is untrusted)
-;; but this should work to start with at least
+;; but this works to start with
   (unless prefix (setq prefix "\C-c."))
   (let ( (define-perl-bindings-string
            (replace-regexp-in-string
@@ -569,6 +619,7 @@ The PREFIX defaults to the 'C-c .'."
             "'(lambda ()
               (local-set-key \"%sw\"  'rep-modified-what-was-changed-here)
               (local-set-key \"%sx\"  'rep-modified-examine-properties-at-point)
+              (local-set-key \"%sX\"  'describe-text-properties)
               (local-set-key \"%su\"  'rep-modified-undo-change-here)
               (local-set-key \"%sR\"  'rep-modified-revert-all-changes)
               (local-set-key \"%s@\"  'rep-modified-accept-changes)
@@ -615,15 +666,10 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
           ((string-match "^Problem" raw-change-metadata) ;; error message
            (message "%s" raw-change-metadata))
           (t
-;;            (rep-markup-target-buffer-oldstyel
-;;               raw-change-metadata target-file-buffer backup-file)
-
            (setq change-metadata
                  (rep-unserialize-change-metadata raw-change-metadata))
-
             (rep-markup-target-buffer
                change-metadata target-file-buffer backup-file)
-
            (rep-markup-substitution-lines changes-list-buffer)
 
            ;; jump to the first change in the modified buffer
@@ -661,28 +707,26 @@ sub-directory will be used in parallel with the FILE."
        )
     full-file-name))
 
-;; TODO any need for condition-case?  What if there's no "which"?
-;; Could set this up with an "and" to short-circuit, no?
-(defun rep-probe-for-program (program)
-  "Probe the system for the given external PROGRAM."
+(defun rep-probe-for-rep-pl ()
+  "Probe the system for the \"rep.pl\" external program.
+Returns t if found, nil otherwise.  As a side-effect, generates a
+warning message if it isn't found."
   (let* (
-         (cmd1
-          (format "which %s"
-                  (shell-quote-argument program)))
-         (cmd2
-          (format "locate /%s"
-                  (shell-quote-argument program)))
-         (result1 (shell-command-to-string cmd1))
-;;         (result2 (shell-command-to-string cmd2))
-;;         (ret (concat result1 " " result2))
-         (ret result1)
+         (rep-pl "rep.pl")
+         (cmd    (format "%s --version" (shell-quote-argument rep-pl)))
+         (result (shell-command-to-string cmd))
+         (expected-pat
+          (format "^Running[ ]+%s[ ]+version:" rep-pl))
          )
-    (cond ((not (> (length result1) 1))
-           (message "The program %s does not seem to be in your PATH." program)
-          nil)
+    (cond ((not (string-match expected-pat result))
+           (message "The program %s does not seem to be in your PATH." rep-pl)
+           nil)
           (t
-           ret))
+           t)
+         )
     ))
+;; (rep-probe-for-rep-pl)
+
 
 ;; Used by rep-substitutions-apply-to-other-window
 (defun rep-run-perl-substitutions ( changes-list-file target-file backup-file )
@@ -704,56 +748,16 @@ used on all of them.  The original file is saved as the given BACKUP-FILE."
                  changes-list-file)
                 (shell-quote-argument
                  target-file)))
-         (check (rep-probe-for-program rep-pl))
          data
          )
-    (cond (check
-           (if rep-debug
-               (message "%s" perl-rep-cmd))
-           (setq data (shell-command-to-string perl-rep-cmd))
-           (if rep-debug
-               (message "%s" data))
-           ))
+    (if rep-debug
+        (message "%s" perl-rep-cmd))
+    (setq data (shell-command-to-string perl-rep-cmd))
+    (if rep-debug
+        (message "%s" data))
     data))
 
 ;; Used by rep-substitutions-apply-to-other-window
-(defun rep-markup-target-buffer-oldstyle (data target-buffer backup-file)
-  "Applies the given change DATA to the TARGET-BUFFER.
-Highlights the changes using different color faces.
-This version works with the raw, serialized data returned from
-the rep.pl call."
-  (set-buffer target-buffer)
-  (revert-buffer t t t) ;;last option is "preserve-modes", what does it do?
-  (font-lock-mode -1)
-  (rep-modified-mode t)
-
-  (push backup-file rep-previous-versions-stack)
-
-  (let ((substitution-lines (rep-split-on-semicolon-delimited-lines data))
-                             ;; also unwhacks quoted semi-cs
-        )
-        (dolist (line  substitution-lines)
-          (cond ((not (string-equal "" line)) ;; skip blank lines
-                 ;; split each line into five fields
-                 (let* (
-                        (fields (rep-split-limited ":" line 5) )
-                        (pass   (string-to-number (nth 0 fields)))
-                        (beg    (string-to-number (nth 1 fields)))
-                        (end    (string-to-number (nth 2 fields)))
-                        (delta  (string-to-number (nth 3 fields)))
-                        (orig   (nth 4 fields))
-                        (record (list pass beg end delta orig))
-                        (markup-face (rep-lookup-markup-face pass))
-                        (len    (+ (length orig) delta) )
-                        stack
-                        )
-                   (put-text-property beg end 'face markup-face target-buffer)
-
-                   ;; Q: why not use record not fields (string-to-number values)
-                   (put-text-property beg end 'rep-last-change fields)
-                   ))))))
-
-;; TODO under development
 (defun rep-markup-target-buffer (data target-buffer backup-file)
   "Applies the given change DATA to the TARGET-BUFFER.
 Highlights the changes using different color faces.
@@ -763,9 +767,8 @@ Requires the DATA to be unserialized into a list-of-lists form."
   (font-lock-mode -1)
   (rep-modified-mode t)
 
-  ;; saving to buffer-local variables:
-  (push backup-file rep-previous-versions-stack)
-  (setq rep-change-metadata data)
+  (push backup-file rep-previous-versions-stack)  ;; buffer-local variable
+  (setq rep-change-metadata data)                 ;; buffer-local variable
 
   (dolist (record data)
     (let* ((pass   (nth 0 record))
@@ -773,68 +776,65 @@ Requires the DATA to be unserialized into a list-of-lists form."
            (end    (nth 2 record))
            (delta  (nth 3 record))
            (orig   (nth 4 record))
-
            (markup-face (rep-lookup-markup-face pass))
            (len    (+ (length orig) delta) )
            )
       (put-text-property beg end 'face markup-face target-buffer)
-
-      ;; TODO ;; any s-to-n breakage later?
       (put-text-property beg end 'rep-last-change record)
       )))
 
-(defun rep-revise-locations (undo-record)
-  "Accepts an UNDO-RECORD, describing a change to be removed from metadata.
+(defun rep-revise-locations (undo-record buffer)
+  "Removes the UNDO-RECORD from the change metadata for BUFFER.
 Removes the matching record from the `rep-change-metadata' buffer-local var,
 and also re-numbers the beg and end fields of the whole structure,
 if necessary, to compensate for any changes in string length due to this
 undo."
-  (let* ((change-metadata rep-change-metadata)  ;; need to be in target-buf
-         (undo-pass   (nth 0 undo-record))
-         (undo-beg    (nth 1 undo-record))
-         (undo-end    (nth 2 undo-record))
-         (undo-delta  (nth 3 undo-record))
-         (undo-orig   (nth 4 undo-record))
-         new-data
-         )
-    (dolist (record (nreverse change-metadata))
-      (let* (
-             (pass   (nth 0 record))
-             (beg    (nth 1 record))
-             (end    (nth 2 record))
-             (delta  (nth 3 record))
-             (orig   (nth 4 record))
-             (markup-face (rep-lookup-markup-face pass))
-             (len    (+ (length orig) delta) )
-             new-record
+  (save-excursion
+    (let ((initial-buffer (current-buffer)))
+      (set-buffer buffer)
+      (let* ((change-metadata rep-change-metadata)  ;; buffer-local var
+             (undo-pass   (nth 0 undo-record))
+             (undo-beg    (nth 1 undo-record))
+             (undo-end    (nth 2 undo-record))
+             (undo-delta  (nth 3 undo-record))
+             (undo-orig   (nth 4 undo-record))
+             new-data
              )
-        (cond ((not (equal record undo-record))
-               (cond ((> beg undo-beg) ;; TODO undo-beg, not end?
-                      (setq beg (- beg undo-delta))
-                      ))
-               (cond ((> end undo-beg)
-                      (setq end (- end undo-delta))
-                      ))
-               (setq new-record (list pass beg end delta orig))
-               (push new-record new-data)
-               ))
-        ))
-    (setq rep-change-metadata new-data)
-    ))
+        (dolist (record (nreverse change-metadata))
+          (let* (
+                 (pass   (nth 0 record))
+                 (beg    (nth 1 record))
+                 (end    (nth 2 record))
+                 (delta  (nth 3 record))
+                 (orig   (nth 4 record))
+                 (markup-face (rep-lookup-markup-face pass))
+                 (len    (+ (length orig) delta) )
+                 new-record
+                 )
+            (cond ((not (equal record undo-record))
+                   (cond ((> beg undo-beg)
+                          (setq beg (- beg undo-delta))
+                          ))
+                   (cond ((> end undo-beg)
+                          (setq end (- end undo-delta))
+                          ))
+                   (setq new-record (list pass beg end delta orig))
+                   (push new-record new-data)
+                   ))
+            ))
+        (setq rep-change-metadata new-data)
+        )
+      (set-buffer initial-buffer)
+      )))
 
-  ;; TODO there could be an efficiency tweak: pass in the location
-  ;; that the undo took place, so we know target-buffer
-  ;; only needs to be refreshed after that point.
 (defun rep-refresh-markup-target-buffer (buffer)
   "Re-applies the change data from `rep-change-metadata' to the BUFFER.
-Intended to be used after \\[rep-markup-target-buffer] has been
-called once.  This function should compensate for any local undos
-made by \\[rep-modified-undo-change-here]."
+As written this is designed to be used only sometime after
+\\[rep-markup-target-buffer] has been used on the buffer at least once."
   (set-buffer buffer)
-  (rep-modified-mode t) ;; why not?
-  ;; TODO need to do something to clear previous face settings?  Maybe:
+  (rep-modified-mode t)
+  ;; TODO clear previous properites?  Possibly:
   ;;    (put-text-property (point-min) (point-max) 'face "")
-  ;; and what about rep-last-change settings?
   (goto-char (point-min))
   (dolist (record rep-change-metadata)
     (let* ((pass   (nth 0 record))
@@ -850,8 +850,6 @@ made by \\[rep-modified-undo-change-here]."
       )))
 
 
-;; TODO is there a better structure than lol?
-;; TODO maybe, lol plus indicies: row numbers related to locations
 (defun rep-unserialize-change-metadata (data)
   "Converts the raw, serialized DATA from rep.pl to a lisp data structure.
 Creates a list of lists, with records in the same order as the lines of DATA."
@@ -995,6 +993,9 @@ Uses the `rep-previous-versions-stack' buffer local variable."
       )
     ))
 
+;; TODO could write an inverse of this:
+;;     rep-modified-display-changes-again
+;; (maybe: have C-u prefix do the inverse?)
 (defun rep-modified-accept-changes ()
   "Accept changes made in buffer, return to normal state.
 Restores the standard syntax coloring, etc."
@@ -1019,14 +1020,11 @@ Restores the standard syntax coloring, etc."
     (message "rep.el: Changes accepted to %s." file)
     ))
 
-;; TODO could write an inverse of the above
-;; rep-modified-display-changes-again
-
 (defun rep-modified-skip-to-next-change ()
   "Skip to next region modified by a substitution."
   (interactive)
   ;; Check if we're inside a changed region first
-  (let* ( (last-change (get-text-property (point) 'rep-last-change))
+  (let* ((last-change (get-text-property (point) 'rep-last-change))
           )
     (cond (last-change ;; we are inside a changed region and must get out first
            (goto-char
@@ -1037,10 +1035,12 @@ Restores the standard syntax coloring, etc."
     (goto-char
      (next-single-property-change
       (point) 'rep-last-change))
-    ))
+    )
+  (rep-modified-what-was-changed-here) ;; tell user some change metadata
+  )
 
 (defun rep-modified-examine-properties-at-point ()
-  "Tells you what properties you have at point."
+  "Tells you all of the text property settings at point."
   (interactive)
   (let* (capture)
     (setq capture (text-properties-at (point)))
@@ -1049,8 +1049,8 @@ Restores the standard syntax coloring, etc."
 
 (defun rep-modified-what-was-changed-here ()
   "Tells you the original string was before it was replaced.
-Looks at the changed string under the cursor, or if not defined
-there, tries to advance the cursor to the next change."
+Looks at the changed string under the cursor, or if we're not
+inside a change, tries to advance the cursor to the next change."
   (interactive)
   (let* ( (last-change (get-text-property (point) 'rep-last-change))
           )
@@ -1059,19 +1059,20 @@ there, tries to advance the cursor to the next change."
              (next-single-property-change (point) 'rep-last-change))
             (setq last-change (get-text-property (point) 'rep-last-change))
             ))
-    (message "Before substitution %s this was: %s" (1+ pass) last-change)
-    ;; TODO cleaner to unpack the 5th field, yes?
+    (cond (last-change
+            (let ((pass (nth 0 last-change))
+                  (last-string (nth 4 last-change))
+                  )
+              (message
+               "This was: %s (changed by substitution %d)."
+               last-string
+               (1+ pass)
+               )
+              ))
+          (t
+           (message "There are no further substitution changes in this buffer.")
+           ))
     ))
-
-;; TODO under development
-;; pass the change record to be undone to the rep-revise-locations
-;; function, which will
-;; Remove (or ignore) records in rep-change-metadata that match
-;; the "undo" records, *and* do an elsip version of revise_locations
-;; to munge any beg/end settings effected by the undo records.
-
-;; Q: should rep-revise-locations will return a list of new rep-last-change
-;; values to be applied?  Or should it Just-Do-It?
 
 (defun rep-modified-undo-change-here ()
   "Undos the individual rep substitution change under the cursor.
@@ -1079,19 +1080,17 @@ Undos the change at point, or if none is there, warns and does nothing.
 Note that this has nothing to do with the usual emacs \"undo\"
 system, which operates completely independently."
   (interactive)
-  (let* (
-         (target-buffer   (current-buffer))
-         (pair (rep-modified-extent-of-change)) ;; now uses rep-last-change
-         (beg (nth 0 pair))
-         (end (nth 1 pair))
+  (let* ((buffer         (current-buffer))
+         (pair           (rep-modified-extent-of-change))
+         (beg            (nth 0 pair))
+         (end            (nth 1 pair))
          stack
          )
     (cond ((not (and beg end))
            (message "No changed region to undo at point.")
            )
           (t
-           (let* (
-                  (record
+           (let* ((record
                    (get-text-property beg 'rep-last-change))
                   (pass  (nth 0 record))
                   (delta (nth 3 record))
@@ -1102,40 +1101,21 @@ system, which operates completely independently."
                   )
              (cond ((not (= expected-len (- end beg)))
                     (message (concat
-                      (format "Can't revert fragment: %s. " existing)
-                      "Must undo adjacent change first." )) )
+                              (format "Can't revert fragment: %s. " existing)
+                              "Must undo adjacent change first." )) )
                    (t
-                    (kill-region beg end)
+                    (delete-region beg end)
                     (insert orig)
-
-                    (rep-revise-locations record)
-                    (rep-refresh-markup-target-buffer target-buffer)
-                         ;; TODO also give it current location, maybe record?
-
+                    (rep-revise-locations record buffer)
+                    (rep-refresh-markup-target-buffer buffer)
+                    (goto-char beg)
+                    (message "Reversed change to: %s" existing)
                     )))
            ))))
-
-;; same as (car (car stack)), right?
-(defun rep-last-pass (stack)
-   "Peek up the STACK one-level and get the last pass number.
-If given STACK is nil, will return nil.  STACK is unmodified."
-   (cond (stack
-          (let* ((fields (pop stack))  ;; TODO could just car
-                 (last-pass (string-to-number (nth 0 fields)))
-                 )
-            last-pass)
-          )
-         (t
-          nil)))
-
 
 ;;--------
 ;; utilitites used by other rep-modified-* functions
 
-;; TODO this attempt at centralizing the task of finding beg and end points
-;; could be used more widely, I suspect.
-;; TODO Might want variants: skip-to-next, etc.
-;; Used by: rep-modified-undo-change-here
 (defun rep-modified-extent-of-change ()
   "Returns the BEG and END of extent of the change at the cursor.
 This looks for the `rep-last-change' text-property.  If the cursor
