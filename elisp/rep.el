@@ -187,7 +187,7 @@ substitution changes will also be underlined in that color.  If
 it is set to t, then the changes will be underlined in the same
 color as their markup face.  See \\[rep-lookup-markup-face].")
 
-(defvar rep-font-lock-buffer-status ()
+(defvar rep-font-lock-buffer-status nil
   "Buffer local variable to store the previous font-lock-mode status.
 This allows us to remember that font-lock-mode was on, and should be
 re-enabled after changes are accepted.")
@@ -547,9 +547,10 @@ Choosing the file name and location is a job for routines such as
   (let* (
          ( hint
            (concat
-           "# Enter s///g lines "
+           "# Enter s///g; lines, "
            "/e not allowed /g assumed, "
-           "C-c.R runs on other window") )
+           "C-c.r runs on other window") )
+         (length-header (length hint))
          ( substitution-template "s///g;" )
          ( f-height (frame-height) )
          ( w-height (window-body-height) )
@@ -574,6 +575,7 @@ Choosing the file name and location is a job for routines such as
     (find-file file)
     (rep-substitutions-mode)
     (insert hint)
+    (put-text-property 1 length-header 'read-only t)
     (insert "\n") ;; check portability?
     (insert substitution-template)
     (move-beginning-of-line 1)
@@ -599,7 +601,7 @@ that use perl's syntax \(and are interpreted using perl\).
      When Rep Modified mode is enabled, key bindings are defined
      to examine and undo the changes made by rep substitutions.
      These are commands such as \\[rep-modified-what-was-changed-here],
-     \\[rep-revert-change-here], and \\[rep-modified-revert-all-changes].
+     \\[rep-modified-undo-change-here], and \\[rep-modified-revert-all-changes].
 See \\[rep-define-rep-modified-mode-keybindings] or \\[rep-standard-setup]."
   ;; The initial value.
   :init-value nil
@@ -624,7 +626,8 @@ The PREFIX defaults to the 'C-c .'."
               (local-set-key \"%sR\"  'rep-modified-revert-all-changes)
               (local-set-key \"%s@\"  'rep-modified-accept-changes)
               (local-set-key \"%sA\"  'rep-modified-accept-changes)
-              (local-set-key \"\C-i\" 'rep-modified-skip-to-next-change)
+              (local-set-key [tab]    'rep-modified-skip-to-next-change)
+              (local-set-key [backtab] 'rep-modified-skip-to-prev-change)
                )"
             ))
          )
@@ -671,6 +674,7 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
             (rep-markup-target-buffer
                change-metadata target-file-buffer backup-file)
            (rep-markup-substitution-lines changes-list-buffer)
+           (setq buffer-read-only 't) ;; TODO R
 
            ;; jump to the first change in the modified buffer
            (let ((spot (next-single-property-change
@@ -763,6 +767,8 @@ used on all of them.  The original file is saved as the given BACKUP-FILE."
 Highlights the changes using different color faces.
 Requires the DATA to be unserialized into a list-of-lists form."
   (set-buffer target-buffer)
+  ;; if font-lock-mode was on, save that information
+  (setq rep-font-lock-buffer-status font-lock-mode)
   (revert-buffer t t t) ;;last option is "preserve-modes", what does it do?
   (font-lock-mode -1)
   (rep-modified-mode t)
@@ -832,9 +838,17 @@ undo."
 As written this is designed to be used only sometime after
 \\[rep-markup-target-buffer] has been used on the buffer at least once."
   (set-buffer buffer)
+  (setq buffer-read-only nil) ;; TODO R
   (rep-modified-mode t)
-  ;; TODO clear previous properites?  Possibly:
-  ;;    (put-text-property (point-min) (point-max) 'face "")
+
+;;   ;; clearing the old rep-last-change values before re-applying
+;;   (remove-list-of-text-properties (point-min) (point-max) '(rep-last-change))
+;;   ;; TODO should I also clear the old face settings, at least for rep-* faces?
+;;   ;; Eh: let's try clearing them all for now:
+;;   (rep-clear-face)
+
+  (rep-kick-props buffer)
+
   (goto-char (point-min))
   (dolist (record rep-change-metadata)
     (let* ((pass   (nth 0 record))
@@ -848,6 +862,31 @@ As written this is designed to be used only sometime after
       (put-text-property beg end 'face markup-face buffer)
       (put-text-property beg end 'rep-last-change record)
       )))
+
+
+(defun rep-kick-props (&optional buffer)
+  "Clears the rep.el properties for the entire BUFFER.
+Defaults to current buffer."
+  (interactive) ;; DEBUG
+  (setq buffer-read-only nil) ;; TODO R
+  (unless buffer
+    (setq buffer (current-buffer)))
+  (set-buffer buffer)
+  ;; TODO mess with this until it goddamn works:
+  (remove-list-of-text-properties (point-min) (point-max) '(rep-last-change))
+  (remove-text-properties (point-min) (point-max) '(face nil))
+)
+
+;; TODO is there a way to be more selective, and only clear rep-* faces?
+(defun rep-clear-face (&optional buffer)
+  "Clears the face settings for the entire BUFFER. Defaults to current buffer."
+  (interactive) ;; DEBUG
+  (unless buffer
+    (setq buffer (current-buffer)))
+  (set-buffer buffer)
+;;  (remove-list-of-text-properties (point-min) (point-max) '(face))
+  (remove-text-properties (point-min) (point-max) '(face nil))
+  )
 
 
 (defun rep-unserialize-change-metadata (data)
@@ -872,37 +911,6 @@ Creates a list of lists, with records in the same order as the lines of DATA."
              (push (list pass beg end delta orig) change-metadata)
               ))))
   change-metadata))
-
-;; Used by rep-substitutions-apply-to-other-window
-(defun rep-markup-lines (buffer)
-  "Mark-up the lines in the given BUFFER.
-Uses the line number with rep-lookup-markup-face to assign a color.
-Acts on the given BUFFER, but leaves the current window active."
-  ;; if font-lock-mode was on, save that information
-  (setq rep-font-lock-buffer-status font-lock-mode)
-  (save-excursion ;; but that trick *never* works... so don't trust it
-    (let* ( (original-buffer (current-buffer))
-            line-number markup-face
-            (lines-left 1)
-            )
-      (set-buffer buffer)
-      (font-lock-mode -1) ;; turns off font-lock unconditionally
-      (goto-char (point-min))
-      (setq line-number 0)
-      (while lines-left
-        (setq markup-face (rep-lookup-markup-face line-number))
-        (let* ( (beg (point))
-                end )
-          (move-end-of-line 1)
-          (setq end (point))
-          (put-text-property beg end 'face markup-face)
-          )
-        (setq line-number (1+ line-number))
-        (setq lines-left (= 0 (forward-line 1)))
-        )
-      (set-buffer original-buffer)
-      )
-    ))
 
 ;; Used by rep-substitutions-apply-to-other-window
 (defun rep-markup-substitution-lines (buffer)
@@ -987,7 +995,7 @@ Uses the `rep-previous-versions-stack' buffer local variable."
     (save-excursion
       (other-window -1)
       (cond ((rep-substitutions-mode-p)
-             (font-lock-mode 1)
+             (font-lock-mode -1)
              (font-lock-fontify-buffer)
              (other-window 1)))
       )
@@ -1002,13 +1010,17 @@ Restores the standard syntax coloring, etc."
   (interactive)
   (let ((file  (buffer-file-name))
         )
+    (setq buffer-read-only nil) ;; TODO R
     (rep-modified-mode -1)
     ;; turn font-lock back on if it was on
-    (cond (rep-font-lock-buffer-status
+    ;; TODO buffer-local amnesia problem. Just turn it on.
+;;    (cond (rep-font-lock-buffer-status
            (font-lock-mode 1)
            (font-lock-fontify-buffer)
-           (local-set-key "\C-i" 'indent-according-to-mode)
-           ))
+;;           ))
+
+    (local-set-key "\C-i" 'indent-according-to-mode)
+    (rep-kick-props)
     (save-buffer)
     ;; also restore cperl syntax colors in substitutions window
     (save-excursion
@@ -1038,7 +1050,24 @@ Restores the standard syntax coloring, etc."
     )
   (rep-modified-what-was-changed-here) ;; tell user some change metadata
   )
-
+(defun rep-modified-skip-to-prev-change ()
+  "Skip to previous region modified by a substitution."
+  (interactive)
+  ;; Check if we're inside a changed region first
+  (let* ((last-change (get-text-property (point) 'rep-last-change))
+          )
+    (cond (last-change ;; we are inside a changed region and must get out first
+           (goto-char
+            (1+
+             (previous-single-property-change (point) 'rep-last-change)))
+           ))
+    ;; jump to the next changed region
+    (goto-char
+     (previous-single-property-change
+      (point) 'rep-last-change))
+    )
+  (rep-modified-what-was-changed-here) ;; tell user some change metadata
+  )
 (defun rep-modified-examine-properties-at-point ()
   "Tells you all of the text property settings at point."
   (interactive)
@@ -1063,11 +1092,12 @@ inside a change, tries to advance the cursor to the next change."
             (let ((pass (nth 0 last-change))
                   (last-string (nth 4 last-change))
                   )
-              (message
-               "This was: %s (changed by substitution %d)."
-               last-string
-               (1+ pass)
-               )
+;;               (message
+;;                "This was: %s (changed by substitution %d)."
+;;                last-string
+;;                (1+ pass)
+;;                )
+              (message "This was: %s" last-string)
               ))
           (t
            (message "There are no further substitution changes in this buffer.")
@@ -1104,12 +1134,14 @@ system, which operates completely independently."
                               (format "Can't revert fragment: %s. " existing)
                               "Must undo adjacent change first." )) )
                    (t
+                    (setq buffer-read-only nil) ;; TODO R
                     (delete-region beg end)
                     (insert orig)
                     (rep-revise-locations record buffer)
                     (rep-refresh-markup-target-buffer buffer)
                     (goto-char beg)
-                    (message "Reversed change to: %s" existing)
+                    (setq buffer-read-only t)  ;; TODO R
+                    (message "Change reverted. Was: %s" existing)
                     )))
            ))))
 
