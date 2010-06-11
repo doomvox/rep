@@ -172,7 +172,7 @@
 ;;---------
 ;;  User Options, Variables
 
-(defvar rep-version "0.03"
+(defvar rep-version "0.04"
  "Version number of the rep.el elisp file, which should be kept
 in sync with the rep.pl script and the Rep.pm \(Emacs::Rep\)
 perl library.")
