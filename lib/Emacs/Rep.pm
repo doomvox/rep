@@ -53,7 +53,7 @@ use strict;
 use warnings;
 my $DEBUG = 1;
 use Carp;
-use Data::Dumper;
+use Data::Dumper::Perltidy;
 use PPI;
 
 require Exporter;

@@ -1058,7 +1058,7 @@ Restores the standard syntax coloring, etc."
           )
     (cond (last-change ;; we are inside a changed region and must get out first
            (goto-char
-            (1+
+            (1-
              (previous-single-property-change (point) 'rep-last-change)))
            ))
     ;; jump to the next changed region
