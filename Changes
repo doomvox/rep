@@ -14,5 +14,10 @@ Revision history for Emacs-Rep
         from the current window being too small).
         User set-up is more flexible (easy to use an alternative key prefix).
 
-0.03    Sun Jun  6 19:48:51 2010
-
+0.03    Fri Jun 11 04:31:04 2010
+        Implemented an entirely new system of managing change
+        metadata, which now supports individual undos of
+        cascading, overlapping substitution changes.
+        The modified buffer is now made read-only until changes
+        are accepted.
+        rep-standard-setup is more flexible.
