@@ -785,8 +785,40 @@ Requires the DATA to be unserialized into a list-of-lists form."
            (len    (+ (length orig) delta) )
            )
       (put-text-property beg end 'face markup-face target-buffer)
-      (put-text-property beg end 'rep-last-change record)
+      (put-text-property beg
+                         (rep-adjust-end end beg)
+                         'rep-last-change record)
       )))
+
+(defun rep-adjust-end (end beg)
+  "If END and BEG are equal, returns END plus 1, otherwise END.
+This is to be used with the markup routines that may need to set a text
+property on a string 0 characters long."
+  (let ((adjusted-end
+         (cond ((equal beg end)
+                (1+ end))
+               (t
+                end))))
+    adjusted-end))
+
+
+(defun rep-unadjust-end (end beg expected-len)
+  "When END > BEG and yet EXPECTED-LEN is 0, return END minus 1, otherwise END.
+This is to be used to compensate for when the markup routines needed to
+set a text property on a string 0 characters long, and cheated pretending
+it was one char long."
+  (let ((diff (- end beg))
+        adjusted-end
+        )
+    (setq adjusted-end
+          (cond ((and
+                  (> diff expected-len)
+                  (equal end (1+ beg)))
+                 (1- end))
+                (t
+                 end)
+                ))
+    adjusted-end))
 
 (defun rep-refresh-markup-target-buffer (buffer)
   "Re-applies the change data from `rep-change-metadata' to the BUFFER.
@@ -812,7 +844,9 @@ As written this is designed to be used only sometime after
            (len    (+ (length orig) delta) )
            )
       (put-text-property beg end 'face markup-face buffer)
-      (put-text-property beg end 'rep-last-change record)
+      (put-text-property beg
+                         (rep-adjust-end end beg)
+                         'rep-last-change record)
       )))
 
 (defun rep-markup-exp ()
@@ -1050,35 +1084,65 @@ Restores the standard syntax coloring, etc."
   (let* ((last-change (get-text-property (point) 'rep-last-change))
           )
     (cond (last-change ;; we are inside a changed region and must get out first
-           (goto-char
-            (1+
-             (next-single-property-change (point) 'rep-last-change)))
+           (let ((spot
+                  (next-single-property-change (point) 'rep-last-change))
+                 )
+             (cond ((integer-or-marker-p spot)
+                    (goto-char
+                     (1+ spot)))))
            ))
-    ;; jump to the next changed region
-    (goto-char
-     (next-single-property-change
-      (point) 'rep-last-change))
-    )
-  (rep-modified-what-was-changed-here) ;; tell user some change metadata
-  )
+    (let ((spot
+           (next-single-property-change (point) 'rep-last-change))
+          )
+      (cond ((integer-or-marker-p spot)
+             ;; jump to the next changed region
+             (goto-char spot)
+             (rep-modified-what-was-changed-here)
+             )
+            (t
+             (message "There are no substitution changes after this point.")
+             )))
+    ))
+
 (defun rep-modified-skip-to-prev-change ()
   "Skip to previous region modified by a substitution."
+  ;; They gyrations here are clunky, but they work.
+  ;; TODO need better primitives to deal with regions.
   (interactive)
+  (rep-move-back-out-of-changed-region)
+    (let ((spot
+           (previous-single-property-change (point) 'rep-last-change))
+          )
+      (cond ((integer-or-marker-p spot)
+             ;; jump to the previous changed region
+             (goto-char (1- spot))
+             (rep-modified-what-was-changed-here)
+             (rep-move-back-out-of-changed-region)
+             (forward-char 1)
+             )
+            (t
+             (message "There are no previous substitution changes.")
+             )))
+    )
+
+(defun rep-move-back-out-of-changed-region ()
+  "If we're inside of a changed region, move back to before it.
+Limitation: if you're positioned right at the trailing edge of
+a changed region, this gets stuck and won't step further back."
+  ;; (interactive) ;; DEBUG
   ;; Check if we're inside a changed region first
   (let* ((last-change (get-text-property (point) 'rep-last-change))
-          )
-    (cond (last-change ;; we are inside a changed region and must get out first
-           (goto-char
-            (1-
-             (previous-single-property-change (point) 'rep-last-change)))
-           ))
-    ;; jump to the next changed region
-    (goto-char
-     (previous-single-property-change
-      (point) 'rep-last-change))
-    )
-  (rep-modified-what-was-changed-here) ;; tell user some change metadata
-  )
+         return
+         )
+    (while last-change
+      (progn
+       (backward-char 1)
+       (setq last-change
+             (get-text-property (point) 'rep-last-change))
+       ))
+    (setq return (point))
+    ))
+
 (defun rep-modified-examine-properties-at-point ()
   "Tells you all of the text property settings at point."
   (interactive)
@@ -1098,9 +1162,7 @@ Restores the standard syntax coloring, etc."
                   )
               (message "Was: %s" last-string)
               ))
-          (t
-           (message "There are no further substitution changes in this buffer.")
-           ))
+          )
     ))
 
 (defun rep-modified-what-was-changed-here-verbose ()
@@ -1156,6 +1218,7 @@ system, which operates completely independently."
                   (orig-len  (length orig))
                   (expected-len (+ orig-len delta))
                   (existing (buffer-substring-no-properties beg end))
+                  (end (rep-unadjust-end end beg expected-len))
                   )
              (cond ((not (= expected-len (- end beg)))
                     (message (concat
