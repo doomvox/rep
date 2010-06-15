@@ -148,7 +148,8 @@
 ;;              (local-set-key "%su"  'rep-modified-undo-change-here)
 ;;              (local-set-key "%sR"  'rep-modified-revert-all-changes)
 ;;              (local-set-key "%sA"  'rep-modified-accept-changes)
-;;              (local-set-key "\C-i" 'rep-modified-skip-to-next-change)
+;;              (local-set-key [tab]  'rep-modified-skip-to-next-change)
+;;              (local-set-key [backtab]  'rep-modified-skip-to-prev-change)
 ;;              ))
 
 ;; For more information:
@@ -179,14 +180,18 @@ in sync with the rep.pl script and the Rep.pm \(Emacs::Rep\)
 perl library.")
 
 ;; TODO always set to nil before shipping code
-(defvar rep-debug t
+(defvar rep-debug nil
   "Set to t to enable some debug messages.")
 
 (defvar rep-live-dangerously nil
   "Set to t if you like adventure.
 At the moment, all this does is to suppress the read-only-
-until-changes-accepted behavior in a modified buffer.")
-(setq rep-live-dangerously nil) ;; DEBUG
+until-changes-accepted behavior in a modified buffer.
+If you \"live dangerously\" you can edit while reviewing
+changes, but the markup will start getting out of sync with
+the text pretty quickly.  Workaround: review and edit working
+from bottom-to-top.")
+;; (setq rep-live-dangerously nil) ;; DEBUG
 
 (defcustom rep-underline-changes-color nil
   "If this is set to a color name such as \"red\" then the
@@ -350,7 +355,7 @@ Underlining may be turned on with `rep-underline-changes-color'."
         (t
          nil)))
 
-;; TODO   Instead of this hack, could've used dired's
+;; Instead of this hack, could've used dired's
 ;; "dired-split" which is quite close to perl's split:
 ;;   (dired-split PAT STR &optional LIMIT)
 (defun rep-split-limited (delimiter line limit)
@@ -407,17 +412,6 @@ The escaping backslashes are removed."
         ))
     (setq lines (nreverse lines))
     lines))
-
-
-;; (rep-split-on-semicolon-delimited-lines
-;; "1:2:3:4:five-eh;
-;; 5:6:7:8:end-oh-line-eh;
-;; 9:10:11:12:you\\;me\\;and...;
-;; 13,14,15,16:and line the last;
-;; ")
-;; looks okay:
-;; ("1:2:3:4:five-eh" "5:6:7:8:end-oh-line-eh" "9:10:11:12:you;me;and..." "13,14,15,16:and line the last")
-
 
 (defun rep-sub-directory (file-location)
   "Given a directory, returns path to a '.rep' sub-directory.
@@ -489,7 +483,7 @@ Defaults to \"Control-c . S\".  A different prefix may be given
 as an argument, for example:
   (rep-define-entry-key \"M-o\")
 would define the key-strokes \"Alt o S\"."
-  (interactive) ;; DEBUG
+;;  (interactive) ;; DEBUG
   (unless prefix (setq prefix "\C-c."))
   (global-set-key (format "%sS" prefix) 'rep-open-substitutions)
   (message "Defined bindings for key: S under the prefix %s" prefix)
@@ -690,7 +684,9 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
              (cond ((not (integer-or-marker-p spot))
                     (message "No marked-up changes found in buffer."))
                    (t
-                    (goto-char spot))))
+                    (goto-char spot)
+                    (rep-modified-what-was-changed-here)
+                    )))
            ))
     ))
 
@@ -747,7 +743,6 @@ are made throughout the TARGET-FILE as though the /g modifier was
 used on all of them.  The original file is saved as the given BACKUP-FILE."
   (let* (
          (rep-pl "rep.pl")
-         ;; TODO capture stderr somehow?
          (perl-rep-cmd
                (format
                 "%s --backup %s --substitutions %s --target %s "
@@ -798,7 +793,7 @@ Requires the DATA to be unserialized into a list-of-lists form."
       )))
 
 (defun rep-adjust-end (end beg)
-  "If END and BEG are equal, returns END plus 1, otherwise END.
+  "If END and BEG are equal, returns END plus 1, otherwise just END.
 This is to be used with the markup routines that may need to set a text
 property on a string 0 characters long."
   (let ((adjusted-end
@@ -836,9 +831,8 @@ As written this is designed to be used only sometime after
   (rep-modified-mode t)
 
   ;; clearing the old rep-last-change values before re-applying
+  ;; (also clears face settings)
   (rep-kick-props buffer)
-  ;; clear face settings
-  ;; (rep-clear-face) ;; (above also clears face settings)
 
   (goto-char (point-min))
   (dolist (record rep-change-metadata)
@@ -857,29 +851,14 @@ As written this is designed to be used only sometime after
       ))
   )
 
-(defun rep-markup-exp ()
-  "Verifying that to add a text property, beg and end cannot be the same.
-Must be apply to a region at least 1 char in length."
-  (interactive)
-  (let* ((buffer (current-buffer))
-         (record (list 0 1350 1350 -6 "Bupkes" ))
-         (beg (nth 1 record))
-         (end (nth 2 record))
-         )
-  (put-text-property beg end 'rep-experimental-property record buffer)
-  (goto-char beg)
-  ))
-
-
 (defun rep-kick-props (&optional buffer)
   "Clears the rep.el properties for the entire BUFFER.
 Defaults to current buffer."
-  (interactive) ;; DEBUG
+;;  (interactive) ;; DEBUG
   (setq buffer-read-only nil)
   (unless buffer
     (setq buffer (current-buffer)))
   (set-buffer buffer)
-  ;; TODO mess with this until it goddamn works:  (( isn't it working now? verify ))
   (remove-list-of-text-properties (point-min) (point-max) '(rep-last-change))
   (remove-text-properties (point-min) (point-max) '(face nil))
 )
@@ -887,13 +866,13 @@ Defaults to current buffer."
 ;; TODO is there a way to be more selective, and only clear rep-* faces?
 (defun rep-clear-face (&optional buffer)
   "Clears the face settings for the entire BUFFER. Defaults to current buffer."
-  (interactive) ;; DEBUG
+;;  (interactive) ;; DEBUG
   (unless buffer
     (setq buffer (current-buffer)))
   (set-buffer buffer)
-;;  (remove-list-of-text-properties (point-min) (point-max) '(face))
   (remove-text-properties (point-min) (point-max) '(face nil))
   )
+
 
 ;; used by rep-modified-undo-change-here
 (defun rep-revise-locations (undo-record buffer)
@@ -1067,12 +1046,13 @@ Restores the standard syntax coloring, etc."
     (rep-modified-mode -1)
     ;; turn font-lock back on if it was on
     ;; TODO buffer-local amnesia problem. Just turn it on.
-;;    (cond (rep-font-lock-buffer-status
-           (font-lock-mode 1)
-           (font-lock-fontify-buffer)
-;;           ))
+    ;;(cond (rep-font-lock-buffer-status
+        (font-lock-mode 1)
+        (font-lock-fontify-buffer)
+    ;;   ))
 
-    (local-set-key "\C-i" 'indent-according-to-mode)
+    ;; manually restoring behavior of tab (hack)
+    (local-set-key [tab] 'indent-according-to-mode)
     (rep-kick-props)
     (save-buffer)
     ;; also restore cperl syntax colors in substitutions window
@@ -1132,7 +1112,10 @@ Uses `rep-last-change'."
     ))
 
 (defun rep-modified-examine-properties-at-point ()
-  "Tells you all of the text property settings at point."
+  "Tells you all of the text property settings at point.
+This function displays the properties in the message bar,
+as opposed to `describe-text-properties' which opens another
+buffer window for them."
   (interactive)
   (let* (capture)
     (setq capture (text-properties-at (point)))
@@ -1307,7 +1290,9 @@ counting from the start of the buffer)."
            ))
     (list beg end)))
 
-;; debug tool
+;;========
+;; debug tools
+
 (defun rep-modified-select-change ()
   "Selects the changed region at point."
   (interactive)
@@ -1320,7 +1305,6 @@ counting from the start of the buffer)."
     (exchange-point-and-mark)
     ))
 
-;; debug tool
 (defun rep-modified-select-change-given-record ( record )
   "Selects the changed region, given a line of change meta-data."
   (interactive "s:Change meta-data record: ")
@@ -1329,7 +1313,7 @@ counting from the start of the buffer)."
           (beg    (string-to-number (nth 1 fields)))
           (end    (string-to-number (nth 2 fields)))
           (delta  (string-to-number (nth 3 fields)))
-          (orig   (nth 4 fields)) ;; TODO good place to unwhack semi-cs...
+          (orig   (nth 4 fields))
           )
     ; select the indicated region
     (goto-char beg)
