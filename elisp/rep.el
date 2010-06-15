@@ -1285,15 +1285,15 @@ counting from the start of the buffer)."
 ;; "previous-single-property-change" wants to skip us way back to the
 ;; previous change.  We have to dance around this irritating behavior.
   (interactive)
-  (let ( stack beg end peek-back )
-    (setq stack (get-text-property (point) 'rep-last-change))
-    ;; since stack is defined we are inside a changed region..
-    (cond (stack
+  (let ( mod beg end peek-back )
+    (setq mod (get-text-property (point) 'rep-last-change))
+    ;; since mod is defined we are inside a changed region..
+    (cond (mod
            ;;... but we need to worry about being at the start
            ;; of the change.
            (setq peek-back
                  (get-text-property (1- (point)) 'rep-last-change))
-           (cond ((not (equal peek-back stack))
+           (cond ((not (equal peek-back mod))
                   (setq beg (point))
                   )
                  (t
