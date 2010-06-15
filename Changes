@@ -31,3 +31,15 @@ Revision history for Emacs-Rep
         Also made modifications to backtab behavior to work better
         with these "zero width" regions.
 
+0.05    Tue Jun 15 11:44:04 2010
+
+        Cleaner implementation of tab/backtab functions in
+        rep-modififed-mode:
+        These:
+          rep-modified-skip-to-next-change and rep-modified-skip-to-prev-change
+        now use the primitives:
+           rep-at-start-of-changed-region
+           rep-at-end-of-changed-region
+        which are built on top of the (successful) experiment:
+           rep-rising-or-falling-edge
+
