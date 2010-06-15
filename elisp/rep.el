@@ -1086,89 +1086,50 @@ Restores the standard syntax coloring, etc."
     ))
 
 (defun rep-modified-skip-to-next-change ()
-  "Skip to next region modified by a substitution."
+  "Move forward to the next beginning point of a changed region.
+Uses `rep-last-change'."
   (interactive)
-  ;; Check if we're inside a changed region first
-  (let* ((last-change (get-text-property (point) 'rep-last-change))
-          )
-    (cond (last-change ;; we are inside a changed region and must get out first
-           (let ((spot
-                  (next-single-property-change (point) 'rep-last-change))
-                 )
-             (cond ((integer-or-marker-p spot)
-                    (goto-char
-                     (1+ spot)))))
-           )))
-  ;; and if we're inside a changed region again already, just stop!
-  (let* ((last-change (get-text-property (point) 'rep-last-change)))
-    (cond (last-change
-           (backward-char 1) ;; TODO.  okay?
-           (rep-modified-what-was-changed-here))
-          (t
-           (let ((spot
-                  (next-single-property-change (point) 'rep-last-change))
-                 )
-             (cond ((integer-or-marker-p spot)
-                    ;; jump to the next changed region
-                    (goto-char spot)
-                    (rep-modified-what-was-changed-here)
-                    )
-                   (t
-                    (message
-                     "There are no substitution changes after this point.")
-                    )))
-           )))
-  )
-
-
-
-(defun rep-modified-skip-to-prev-change ()
-  "Skip to previous region modified by a substitution."
-;; If we're inside of a mod, go to the mod before this one.
-;; If outside of a mod, just go back.
-;; Position cursor at the beginning of the mod region.
-  (interactive)
-  (rep-move-back-out-of-changed-region)
-    (let ((spot
-           (previous-single-property-change (point) 'rep-last-change))
-          )
-      (cond ((integer-or-marker-p spot)
-             ;; jump to the previous changed region
-             (goto-char (1- spot))
-             (rep-modified-what-was-changed-here)
-             (rep-move-back-out-of-changed-region)
-             ;; (forward-char 1)
-             )
-            (t
-             (message "There are no previous substitution changes.")
-             )))
-    )
-
-;; TODO move down into "utilitites" section?
-;; Used by rep-modified-skip-to-prev-change
-(defun rep-move-back-out-of-changed-region ()
-  "If we're inside of a changed region, move back to before it.
-Limitation: if you're positioned right at the trailing edge of
-a changed region, this gets stuck and won't step further back."
-   (interactive) ;; DEBUG
-  ;; Check if we're inside a changed region first
-  (let* ((mod (get-text-property (point) 'rep-last-change))
-         spot return
+  (let* ((property 'rep-last-change)
+         (loc (point))
          )
-    (cond (mod
-           (cond ((rep-at-start-of-changed-region)
-                  )
-                 (t
-                  (setq spot
-                        (previous-single-property-change
-                         (point) 'rep-last-change))
-                  (goto-char spot)
-;;                  (backward-char 1)
-                  ))
-           ))
-    (setq return (point))
+    (while (progn
+             (setq loc
+                   (next-single-property-change loc property))
+             (cond ((integer-or-marker-p loc)
+                    (goto-char loc)
+                    (not (rep-modified-at-start-of-changed-region))
+                    );; keep going until at beg edge
+                   (t
+                    (message "No more changed regions after this.")
+                    nil) ;; so exit while loop
+                   )
+             ))
+    (if (integer-or-marker-p loc)
+        (rep-modified-what-was-changed-here))
     ))
 
+(defun rep-modified-skip-to-prev-change ()
+  "Move back to the previous changed region, stopping at the beginning point.
+Uses `rep-last-change'."
+  (interactive)
+  (let* ((property 'rep-last-change)
+         (loc (point))
+         )
+    (while (progn
+             (setq loc
+                   (previous-single-property-change loc property))
+             (cond ((integer-or-marker-p loc)
+                    (goto-char loc)
+                    (not (rep-modified-at-start-of-changed-region))
+                    );; keep going until at beg edge
+                   (t
+                    (message "No more changed regions before this.")
+                    nil) ;; so exit while loop
+                   )
+             ))
+    (if (integer-or-marker-p loc)
+        (rep-modified-what-was-changed-here))
+    ))
 
 (defun rep-modified-examine-properties-at-point ()
   "Tells you all of the text property settings at point."
@@ -1294,7 +1255,7 @@ Returns nil if the property is not defined."
                  )))
     ret))
 
-(defun rep-at-start-of-changed-region ()
+(defun rep-modified-at-start-of-changed-region ()
   "Returns t if point is at the start of a new rep-last-change regions.
 That means we're at the beginning of a range where the text-property
 rep-last-change is set to some value."
@@ -1303,7 +1264,7 @@ rep-last-change is set to some value."
          )
     ret))
 
-(defun rep-at-end-of-changed-region ()
+(defun rep-modified-at-end-of-changed-region ()
   "Returns t if point is at the end of a new rep-last-change regions.
 That means we're at the beginning of a range where the text-property
 rep-last-change is set to some value."
@@ -1312,9 +1273,8 @@ rep-last-change is set to some value."
          )
     ret))
 
-;; TODO next... write a jump forward/backward to next beg edge?
-
-
+;; TODO an older routine that could be refactored in terms of the above.
+;; No known bugs, however.
 (defun rep-modified-extent-of-change ()
   "Returns the BEG and END of extent of the change at the cursor.
 This looks for the `rep-last-change' text-property.  If the cursor
@@ -1329,7 +1289,7 @@ counting from the start of the buffer)."
     (setq stack (get-text-property (point) 'rep-last-change))
     ;; since stack is defined we are inside a changed region..
     (cond (stack
-           ;;... but we need to worry about being right at the start
+           ;;... but we need to worry about being at the start
            ;; of the change.
            (setq peek-back
                  (get-text-property (1- (point)) 'rep-last-change))
