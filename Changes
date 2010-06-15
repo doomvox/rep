@@ -16,10 +16,18 @@ Revision history for Emacs-Rep
 
 0.03    Fri Jun 11 04:31:04 2010
         Implemented an entirely new system of managing change
-        metadata, which now supports individual undos of
-        cascading, overlapping substitution changes.
+        metadata, which now supports an indefinite series of
+        individual undos of cascading, overlapping substitution
+        changes.
         The modified buffer is now made read-only until changes
         are accepted.
-        rep-standard-setup is more flexible.
+        User set-up with rep-standard-setup is still more flexible.
 
-0.04    Fri Jun 11 04:35:32 2010
+0.04    Sat Jun 12 22:34:28 2010
+
+        Cleaner handling of zero-width end results (i.e.  when a
+        s///g is used to delete a string entirely, now you can
+        still tab to that location and undo the deletion).
+        Also made modifications to backtab behavior to work better
+        with these "zero width" regions.
+
