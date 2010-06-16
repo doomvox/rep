@@ -97,7 +97,7 @@ use lib ("$Bin/../lib",
          "$HOME/End/Cave/Rep/Wall/Emacs-Rep/scripts/../lib"); # TODO
 use Emacs::Rep     qw( :all );
 
-our $VERSION = 0.05;
+our $VERSION = 0.06;
 my  $prog    = basename($0);
 
 my $DEBUG   = 0;                 # TODO set default to 0 when in production
