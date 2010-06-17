@@ -358,32 +358,6 @@ Underlining may be turned on with `rep-underline-changes-color'."
         (t
          nil)))
 
-;; Instead of this hack, could've used dired's
-;; "dired-split" which is quite close to perl's split:
-;;   (dired-split PAT STR &optional LIMIT)
-;; NO LONGER IN USE.  DELETE.
-(defun rep-split-limited (delimiter line limit)
-  "Split LINE on DELIMITER into no more than LIMIT fields.
-This is something like perl's limit feature on splits.
-Using this function additional, superfluous delimiters are
-allowed in the final field.
-Example:
- (rep-split-limited \":\" \"hey:ho:lets:go:gabba:gabba:hey\" 5)
- (\"hey\" \"ho\" \"lets\" \"go\" \"gabba:gabba:hey\")
-"
-  (let* ((raw (split-string line delimiter))
-         (new-list ())
-         (i 0)
-         (i-limit (- limit 1))
-         )
-    (while (< i i-limit)
-      (push (pop raw) new-list)
-      (setq i (1+ i))
-      )
-    (push (mapconcat 'identity raw delimiter) new-list)
-    (nreverse new-list)
-    ))
-
 (defun rep-split-on-semicolon-delimited-lines ( text )
   "Splits text on line-endings with semi-colons.
 This allows for \"lines\" with embedded newlines, but any
