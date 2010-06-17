@@ -167,7 +167,9 @@
 
 (provide 'rep)
 (eval-when-compile
-  (require 'cl))
+  (require 'cl)
+  (require 'dired-aux)
+  )
 
 
 
@@ -293,6 +295,7 @@ all integers except for orig, which is a string.")
  "Faces keyed by number (an integer to font association).
 Used by function \\[rep-lookup-markup-face].")
 ;; hardcoded generation of look-up table (stupid, but simple)
+;; TODO (1) look into vectors. (2) have rep-make-face generate.
 (setq rep-face-alist
       '(
         (00 . rep-00-face)
@@ -358,6 +361,7 @@ Underlining may be turned on with `rep-underline-changes-color'."
 ;; Instead of this hack, could've used dired's
 ;; "dired-split" which is quite close to perl's split:
 ;;   (dired-split PAT STR &optional LIMIT)
+;; NO LONGER IN USE.  DELETE.
 (defun rep-split-limited (delimiter line limit)
   "Split LINE on DELIMITER into no more than LIMIT fields.
 This is something like perl's limit feature on splits.
@@ -926,13 +930,15 @@ undo."
 Creates a list of lists, with records in the same order as the lines of DATA."
   (let* ( change-metadata
           (substitution-lines (rep-split-on-semicolon-delimited-lines data))
-          ;; also unwhacks quoted semi-cs
+            ;; that also unwhacks quoted semi-cs
+          (count (length substitution-lines))
           )
   (dolist (line (nreverse substitution-lines))
     (cond ((not (string-equal "" line)) ;; skip blank lines
            ;; split each line into five fields
            (let* (
-                  (fields (rep-split-limited ":" line 5) )
+;;                  (fields (rep-split-limited ":" line 5) )
+                  (fields (dired-split ":" line 5))
                   (pass   (string-to-number (nth 0 fields)))
                   (beg    (string-to-number (nth 1 fields)))
                   (end    (string-to-number (nth 2 fields)))
@@ -941,7 +947,8 @@ Creates a list of lists, with records in the same order as the lines of DATA."
                   ;; (len    (+ (length orig) delta) )
                   )
              (push (list pass beg end delta orig) change-metadata)
-              ))))
+              )))
+    )
   change-metadata))
 
 ;; Used by rep-substitutions-apply-to-other-window
@@ -1308,7 +1315,8 @@ counting from the start of the buffer)."
 (defun rep-modified-select-change-given-record ( record )
   "Selects the changed region, given a line of change meta-data."
   (interactive "s:Change meta-data record: ")
-  (let* ( (fields (rep-split-limited ":" record 5) )
+  (let* ( ;; (fields (rep-split-limited ":" record 5) )
+          (fields (dired-split ":" record 5))
           (pass   (string-to-number (nth 0 fields)))
           (beg    (string-to-number (nth 1 fields)))
           (end    (string-to-number (nth 2 fields)))
