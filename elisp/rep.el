@@ -208,6 +208,13 @@ This allows us to remember that font-lock-mode was on, and should be
 re-enabled after changes are accepted.")
 (make-variable-buffer-local 'rep-font-lock-buffer-status)
 
+(defvar rep-tab-binding nil
+  "Buffer local character to preserve the tab key binding.
+The rep-modified-mode minor-mode rebinds this, but sometimes that
+persists after the minor mode is shut-off (?), so we use this to
+make sure.")
+(make-variable-buffer-local 'rep-tab-binding)
+
 (defvar rep-default-substitutions-directory nil
   "The location to place newly created files of substitution commands.
 Note: include a trailing slash.
@@ -623,7 +630,7 @@ t will leave bindings for tab and backtab alone."
               (local-set-key \"%sA\"  'rep-modified-accept-changes)
               (local-set-key \"%sn\"  'rep-modified-skip-to-next-change)
               (local-set-key \"%sp\"  'rep-modified-skip-to-prev-change)
-               )"
+               "
             ))
          )
   (unless dont-touch-tab
@@ -632,8 +639,11 @@ t will leave bindings for tab and backtab alone."
              "(local-set-key [tab]     'rep-modified-skip-to-next-change)
               (local-set-key [backtab] 'rep-modified-skip-to-prev-change)"
                   )))
-    (add-hook 'rep-modified-mode-hook (eval (read define-perl-bindings-string)))
-    ))
+
+  (setq define-perl-bindings-string (concat define-perl-bindings-string ")"))
+
+  (add-hook 'rep-modified-mode-hook (eval (read define-perl-bindings-string)))
+  ))
 
 
 ;;--------
@@ -777,6 +787,10 @@ Requires the DATA to be unserialized into a list-of-lists form."
   (setq rep-font-lock-buffer-status font-lock-mode)
   (revert-buffer t t t) ;;last option is "preserve-modes", what does it do?
   (font-lock-mode -1)
+
+  (setq rep-tab-binding
+        (lookup-key (current-global-map) "\C-i"))
+
   (rep-modified-mode t)
 
   (push backup-file rep-previous-versions-stack)  ;; buffer-local variable
@@ -790,6 +804,10 @@ As written this is designed to be used only sometime after
 \\[rep-markup-target-buffer] has been used on the buffer at least once."
   (set-buffer buffer)
   (setq buffer-read-only nil)
+
+  (setq rep-tab-binding
+        (lookup-key (current-global-map) "\C-i"))
+
   (rep-modified-mode t)
 
   ;; clearing the old rep-last-change values before re-applying
@@ -1105,7 +1123,8 @@ Restores the standard syntax coloring, etc."
     ;;   ))
 
     ;; manually restoring behavior of tab (hack)
-    (local-set-key [tab] 'indent-according-to-mode)
+;;    (local-set-key [tab] 'indent-according-to-mode)
+    (local-set-key [tab] rep-tab-binding)
     (rep-kick-props)
     (save-buffer)
     ;; also restore cperl syntax colors in substitutions window
