@@ -840,6 +840,13 @@ Common code used by \\[rep-markup-target-buffer] and
                  )
             (put-text-property beg
                                end 'face markup-face target-buffer)
+
+            ;; experiment: lead with record number. TODO EXP
+            (push i record)
+
+            ;; TODO ALT: try putting record number at end?
+            ;; (setq record (append record (list i)))
+
             (put-text-property beg
                                (rep-adjust-end end beg)
                                'rep-last-change record)
@@ -919,8 +926,16 @@ undo."
       (set-buffer buffer)
       (let* ((count (length rep-change-metadata))
              row
+             (record_number (pop undo-record)) ;; TODO EXP
              )
-        (setq row (rep-find-matching-record-in-change-metadata undo-record))
+;;        (setq row (rep-find-matching-record-in-change-metadata undo-record))
+        (setq row record_number) ;; TODO EXP
+
+        (unless  ;; TODO EXP debug aid only
+            (eq row (rep-find-matching-record-in-change-metadata undo-record))
+          (message "Odd problem: data doesn't match row record number")
+          )
+
         (cond (row
                ;; Clear the data for this row
                (aset rep-change-metadata row '())
@@ -1200,8 +1215,10 @@ buffer window for them."
   (let* ( (last-change (get-text-property (point) 'rep-last-change))
           )
     (cond (last-change
-            (let ((pass (nth 0 last-change))
-                  (last-string (nth 4 last-change))
+            (let* (
+                   (record_number (pop last-change)) ;; TODO EXP
+                   (pass        (nth 0 last-change))
+                   (last-string (nth 4 last-change))
                   )
               (message "Was: %s" last-string)
               ))
@@ -1223,7 +1240,9 @@ substitution that made the change."
             (setq last-change (get-text-property (point) 'rep-last-change))
             ))
     (cond (last-change
-            (let ((pass (nth 0 last-change))
+            (let (
+                  (record_number (pop last-change)) ;; TODO EXP
+                  (pass (nth 0 last-change))
                   (last-string (nth 4 last-change))
                   )
               (message
@@ -1255,6 +1274,7 @@ system, which operates completely independently."
           (t
            (let* ((record
                    (get-text-property beg 'rep-last-change))
+                  (record_number (pop record)) ;; TODO EXP
                   (pass  (nth 0 record))
                   (delta (nth 3 record))
                   (orig  (nth 4 record))
@@ -1271,6 +1291,7 @@ system, which operates completely independently."
                     (setq buffer-read-only nil)
                     (delete-region beg end)
                     (insert orig)
+                    (push record_number record) ;; TODO EXP hack!
                     (rep-revise-locations record buffer)
                     (rep-refresh-markup-target-buffer buffer)
                     (goto-char beg)
@@ -1348,10 +1369,10 @@ This looks for the `rep-last-change' text-property.  If the cursor
 is inside a modified region, this function finds the extent of it.
 Returns a list of the two coordinates (character numbers
 counting from the start of the buffer)."
-;; The difficulty here is that if we're *right* at the start of the change,
+;; The difficulty here is that if we're just at the start of the change,
 ;; "previous-single-property-change" wants to skip us way back to the
 ;; previous change.  We have to dance around this irritating behavior.
-;; TODO analogus behavior at end of change?
+;; TODO similar problem at end of change?
   (interactive)
   (let ( mod beg end peek-back )
     (setq mod (get-text-property (point) 'rep-last-change))
