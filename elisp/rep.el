@@ -830,26 +830,19 @@ Common code used by \\[rep-markup-target-buffer] and
     (while (< i count)
       (if ;; skip any empty records
           (setq record (aref rep-change-metadata i))
-          (let* ((pass   (nth 0 record))
-                 (beg    (nth 1 record))
-                 (end    (nth 2 record))
-                 (delta  (nth 3 record))
-                 (orig   (nth 4 record))
+          (let* (
+                 (pass   (rep-get 'record 'pass))
+                 (beg    (rep-get 'record 'beg))
+                 (end    (rep-get 'record 'end))
                  (markup-face (rep-lookup-markup-face pass))
-                 (len    (+ (length orig) delta) )
                  )
             (put-text-property beg
                                end 'face markup-face target-buffer)
 
-            ;; experiment: lead with record number. TODO EXP
-            (push i record)
-
-            ;; TODO ALT: try putting record number at end?
-            ;; (setq record (append record (list i)))
-
+            ;; rep-last-change is now simply the record number
             (put-text-property beg
                                (rep-adjust-end end beg)
-                               'rep-last-change record)
+                               'rep-last-change i)
             ))
       (setq i (1+ i))
       )
@@ -909,57 +902,52 @@ Defaults to current buffer."
   )
 
 ;; used by rep-modified-undo-change-here
-(defun rep-revise-locations (undo-record buffer)
-  "Marks inactive the record matching UNDO-RECORD in the changes for BUFFER.
+(defun rep-revise-locations (record-number buffer)
+  "Marks inactive the record matching RECORD-NUMBER in the changes for BUFFER.
 Doing an \"undo\" of a substitution change on a buffer means marking
-it undone in the `rep-change-metadata' buffer-local var.  This routine
-also re-numbers the beg and end fields of the whole structure,
-if necessary, to compensate for any changes in string length due to this
-undo."
+it undone in the `rep-change-metadata' buffer-local var.
+RECORD-NUMBER should simply be the row of the array.
+This routine also re-numbers the beg and end fields of the whole
+structure, if necessary, to compensate for any changes in string
+length due to this undo."
   ;; o Ultimately, as part of the death-to-readonly project, this
   ;; routine will probably also (or just) handle adjustments for
   ;; deltas due to manual edits.
-  ;; o For now we mark a record inactive by clearing the data,
+  ;; o We mark a record inactive by clearing the data,
   ;; replacing it with an empty list.
   (save-excursion
     (let ((initial-buffer (current-buffer)))
       (set-buffer buffer)
       (let* ((count (length rep-change-metadata))
-             row
-             (record_number (pop undo-record)) ;; TODO EXP
+             (undo-record (aref rep-change-metadata record-number))
+             (row record-number)
              )
-;;        (setq row (rep-find-matching-record-in-change-metadata undo-record))
-        (setq row record_number) ;; TODO EXP
-
-        (unless  ;; TODO EXP debug aid only
-            (eq row (rep-find-matching-record-in-change-metadata undo-record))
-          (message "Odd problem: data doesn't match row record number")
-          )
-
         (cond (row
                ;; Clear the data for this row
                (aset rep-change-metadata row '())
-               (let* ((undo-pass   (nth 0 undo-record))
-                      (undo-beg    (nth 1 undo-record))
-                      (undo-end    (nth 2 undo-record))
-                      (undo-delta  (nth 3 undo-record))
-                      (undo-orig   (nth 4 undo-record))
+
+               (let* ((undo-pass   (rep-get 'undo-record 'pass))
+                      (undo-beg    (rep-get 'undo-record 'beg))
+                      (undo-end    (rep-get 'undo-record 'end))
+                      (undo-delta  (rep-get 'undo-record 'delta))
+                      (undo-orig   (rep-get 'undo-record 'orig))
                       )
                  ;; loop over all of rep-change-metadata (why all? start later!)
                  (let* ((i 0)
                         record
                         )
-                   (while (< i count)
+                   (while (< i count)  ;; TODO check
                      (setq record (aref rep-change-metadata i))
                      (if record
                          (let* (
-                                (pass   (nth 0 record))
-                                (beg    (nth 1 record))
-                                (end    (nth 2 record))
-                                (delta  (nth 3 record))
-                                (orig   (nth 4 record))
+                                (pass   (rep-get 'record 'pass))
+                                (beg    (rep-get 'record 'beg))
+                                (end    (rep-get 'record 'end))
+                                (delta  (rep-get 'record 'delta))
+                                (orig   (rep-get 'record 'orig))
+
                                 (len    (+ (length orig) delta) )
-                                new-record
+                                (new-record ())
                                 )
                            (cond ((> beg undo-beg)
                                   (setq beg (- beg undo-delta))
@@ -967,7 +955,13 @@ undo."
                            (cond ((> end undo-beg)
                                   (setq end (- end undo-delta))
                                   ))
-                           (setq new-record (list pass beg end delta orig))
+
+                           (rep-set 'new-record 'pass   pass)
+                           (rep-set 'new-record 'beg    beg)
+                           (rep-set 'new-record 'end    end)
+                           (rep-set 'new-record 'delta  delta)
+                           (rep-set 'new-record 'orig   orig)
+
                            (aset rep-change-metadata i new-record)
                            )
                        )
@@ -980,26 +974,6 @@ undo."
               ))
       (set-buffer initial-buffer)
       )))
-
-
-;; Used by rep-revise-locations
-(defun rep-find-matching-record-in-change-metadata (record)
-  "If a match is found for RECORD in `rep-change-metadata', returns row number.
-Uses \\[equal] to compare."
-  (let* (item
-         (count (length rep-change-metadata))
-         (i 0)
-         row)
-    (setq row
-          (catch 'SPEAR
-            (while (< i count)
-              (setq item (aref rep-change-metadata i))
-              (if (equal record item)
-                  (throw 'SPEAR i))
-              (setq i (1+ i))
-              )))
-;;    (message "match for: %s at row: %d" (pp-to-string record) row) ;; DEBUG
-  row))
 
 ;; used by: rep-substitutions-apply-to-other-window
 (defun rep-unserialize-change-metadata (data)
@@ -1023,8 +997,17 @@ Creates a list of lists, with records in the same order as the lines of DATA."
                     (delta  (string-to-number (nth 3 fields)))
                     (orig   (nth 4 fields))
                     ;; (len    (+ (length orig) delta) )
+                    (metadata-alist () )
                     )
-               (aset change-metadata i (list pass beg end delta orig))
+
+               ;; each record an alist
+               (rep-set 'metadata-alist 'pass   pass)
+               (rep-set 'metadata-alist 'beg    beg)
+               (rep-set 'metadata-alist 'end    end)
+               (rep-set 'metadata-alist 'delta  delta)
+               (rep-set 'metadata-alist 'orig   orig)
+               (aset change-metadata i metadata-alist)
+
                (setq i (1+ i))
                )))
       )
@@ -1216,9 +1199,8 @@ buffer window for them."
           )
     (cond (last-change
             (let* (
-                   (record_number (pop last-change)) ;; TODO EXP
-                   (pass        (nth 0 last-change))
-                   (last-string (nth 4 last-change))
+                   (record (aref rep-change-metadata last-change))
+                   (last-string (rep-get 'record 'orig))
                   )
               (message "Was: %s" last-string)
               ))
@@ -1240,10 +1222,10 @@ substitution that made the change."
             (setq last-change (get-text-property (point) 'rep-last-change))
             ))
     (cond (last-change
-            (let (
-                  (record_number (pop last-change)) ;; TODO EXP
-                  (pass (nth 0 last-change))
-                  (last-string (nth 4 last-change))
+            (let* (
+                  (record (aref rep-change-metadata last-change))
+                  (last-string (rep-get 'record 'orig))
+                  (pass        (rep-get 'record 'pass))
                   )
               (message
                "This was: %s (changed by the substitution on line: %d)."
@@ -1272,12 +1254,14 @@ system, which operates completely independently."
            (message "No changed region to undo at point.")
            )
           (t
-           (let* ((record
+           (let* ((record-number
                    (get-text-property beg 'rep-last-change))
-                  (record_number (pop record)) ;; TODO EXP
-                  (pass  (nth 0 record))
-                  (delta (nth 3 record))
-                  (orig  (nth 4 record))
+
+                  (record (aref rep-change-metadata record-number))
+                  (pass        (rep-get 'record 'pass))
+                  (delta       (rep-get 'record 'delta))
+                  (orig        (rep-get 'record 'orig))
+
                   (orig-len  (length orig))
                   (expected-len (+ orig-len delta))
                   (existing (buffer-substring-no-properties beg end))
@@ -1291,8 +1275,8 @@ system, which operates completely independently."
                     (setq buffer-read-only nil)
                     (delete-region beg end)
                     (insert orig)
-                    (push record_number record) ;; TODO EXP hack!
-                    (rep-revise-locations record buffer)
+
+                    (rep-revise-locations record-number buffer)
                     (rep-refresh-markup-target-buffer buffer)
                     (goto-char beg)
                     (unless rep-live-dangerously
@@ -1399,6 +1383,27 @@ counting from the start of the buffer)."
     (list beg end)))
 
 ;;========
+;; general elisp utililities
+
+(defun rep-get (alist-symbol key)
+  "Look up value for given KEY in ALIST.
+Example:
+   (rep-get 'rep-general-alist 'C)
+Note: must quote alist name."
+  (let* ((value (assoc key (eval alist-symbol)))
+         )
+    (car (cdr value))
+    ))
+
+(defun rep-set (alist-symbol key value)
+  "Store given VALUE under KEY in ALIST.
+Example:
+   (rep-set 'rep-general-alist 'C \"CCC\")
+Note: must quote alist name."
+  (set alist-symbol (cons (list key value) (eval alist-symbol)))
+  )
+
+;;========
 ;; debug tools
 
 (defun rep-modified-select-change ()
@@ -1412,25 +1417,5 @@ counting from the start of the buffer)."
     (goto-char end)
     (exchange-point-and-mark)
     ))
-
-(defun rep-modified-select-change-given-record ( record )
-  "Selects the changed region, given a line of change meta-data."
-  (interactive "s:Change meta-data record: ")
-  (let* ( ;; (fields (rep-split-limited ":" record 5) )
-          (fields (dired-split ":" record 5))
-          (pass   (string-to-number (nth 0 fields)))
-          (beg    (string-to-number (nth 1 fields)))
-          (end    (string-to-number (nth 2 fields)))
-          (delta  (string-to-number (nth 3 fields)))
-          (orig   (nth 4 fields))
-          )
-    ; select the indicated region
-    (goto-char beg)
-    (set-mark beg)
-    (goto-char end)
-    (exchange-point-and-mark)
-    (message "Was: %s" orig)
-    ))
-
 
 ;;; rep.el ends here
