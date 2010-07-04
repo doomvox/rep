@@ -863,9 +863,9 @@ property on a string 0 characters long."
 ;; Used by rep-modified-undo-change-here
 (defun rep-unadjust-end (end beg expected-len)
   "When END > BEG and yet EXPECTED-LEN is 0, return END minus 1, otherwise END.
-This is to be used to compensate for when the markup routines needed to
-set a text property on a string 0 characters long, and cheated pretending
-it was one char long."
+This is used to compensate for when the markup routines need to
+set a text property on a string 0 characters long: we cheat, and
+pretend the string is one char long."
   (let ((diff (- end beg))
         adjusted-end
         )
@@ -949,10 +949,14 @@ length due to this undo."
                                 (len    (+ (length orig) delta) )
                                 (new-record ())
                                 )
-                           (cond ((> beg undo-beg)
+
+                           ;; The thinking here: the change acts at the
+                           ;; point "undo-beg".  All locations after
+                           ;; that point need to be adjusted by "undo-delta"
+                           (cond ((>= beg undo-beg)
                                   (setq beg (- beg undo-delta))
                                   ))
-                           (cond ((> end undo-beg)
+                           (cond ((>= end undo-beg)
                                   (setq end (- end undo-delta))
                                   ))
 
@@ -1384,6 +1388,7 @@ counting from the start of the buffer)."
 
 ;;========
 ;; general elisp utililities
+;; alist manipulation
 
 (defun rep-get (alist-symbol key)
   "Look up value for given KEY in ALIST.
