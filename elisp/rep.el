@@ -169,6 +169,7 @@
 (eval-when-compile
   (require 'cl)
   (require 'dired-aux)
+  (require 'json)
   )
 
 
@@ -185,6 +186,7 @@ perl library.")
 ;; TODO always set to nil before shipping code
 (defvar rep-debug nil
   "Set to t to enable some debug messages.")
+;; (setq rep-debug t)
 
 (defvar rep-live-dangerously nil
   "Set to t if you like adventure.
@@ -249,6 +251,12 @@ The fields in each record: pass, beg, end, delta, orig,
 all integers except for orig, which is a string.")
 (make-variable-buffer-local 'rep-change-metadata)
 (put 'rep-change-metadata 'risky-local-variable t)
+
+
+;; Text properties:
+;;   rep-last-change
+;;   rep-change-stack
+;; Document?
 
 ;;--------
 ;; colorized faces used to mark-up changes
@@ -345,7 +353,7 @@ Used by function \\[rep-lookup-markup-face].")
 ;;--------
 ;; utility functions used by commands below
 (defun rep-lookup-markup-face (pass)
-  "Given an integer PASS, returns an appropriate face from \[[rep-face-alist]].
+  "Given an integer PASS, returns an appropriate face from \\[rep-face-alist].
 These faces are named rep-NN-face where NN is a two-digit integer.
 In the event that PASS exceeds the number of such defined faces, this
 routine will wrap around and begin reusing the low-numbered faces.
@@ -683,9 +691,14 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
           ((string-match "^Problem" raw-change-metadata) ;; error message
            (message "%s" raw-change-metadata))
           (t
+           ;; DEBUG
+           (message
+            "rep-substitutions-apply-to-other-window: the raw-change-metada: ")
+           (message "%s" raw-change-metadata) ;; DEBUG
            (setq change-metadata
                  (rep-unserialize-change-metadata raw-change-metadata))
-            (rep-markup-target-buffer
+
+           (rep-markup-target-buffer
                change-metadata target-file-buffer backup-file)
            (rep-markup-substitution-lines changes-list-buffer)
            (unless rep-live-dangerously
@@ -702,7 +715,8 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
                     (goto-char spot)
                     (rep-modified-what-was-changed-here)
                     )))
-           ))
+           )
+          )
     ))
 
 ;; Used by rep-substitutions-apply-to-other-window
@@ -834,6 +848,8 @@ Common code used by \\[rep-markup-target-buffer] and
                  (pass   (rep-get 'record 'pass))
                  (beg    (rep-get 'record 'beg))
                  (end    (rep-get 'record 'end))
+;;                 (orig   (rep-get 'record 'orig))
+                 (orig "")
                  (markup-face (rep-lookup-markup-face pass))
                  )
             (put-text-property beg
@@ -843,10 +859,196 @@ Common code used by \\[rep-markup-target-buffer] and
             (put-text-property beg
                                (rep-adjust-end end beg)
                                'rep-last-change i)
+
+            (setq orig (rep-setup-orig-string-properties record i))
+            (rep-push-change-stack orig beg end)
             ))
       (setq i (1+ i))
       )
     ))
+
+(defun rep-setup-orig-string-properties (record record-number)
+  "Given RECORD generates a versions of \"orig\" with key text-properties.
+These include the appropriate face \(to color the text\), and the
+value of rep-last-change set to RECORD-NUMBER."
+  (let* (
+         (pass   (rep-get 'record 'pass))
+         (beg    (rep-get 'record 'beg))
+         (end    (rep-get 'record 'end))
+         (orig   (rep-get 'record 'orig))
+         (markup-face (rep-lookup-markup-face pass))
+         (orig-string orig)
+         )
+
+    (put-text-property 0
+                       (length orig)
+                       'face markup-face orig-string)
+
+    ;; rep-last-change is now simply the record number
+    ;; if we need to "adjust the end", use a length of 1
+    ;; (( TODO I bet there's problems here... orig-string won't
+    ;;    be long enough for that treatment... how can you snag
+    ;;    an extra char without more info?  hack perl side? ))
+    (let (( l
+            (cond ((not (= (rep-adjust-end end beg) end))
+                   1)
+                  (t
+                   (length orig))
+                  ))
+          )
+      (put-text-property 0
+                         l
+                         'rep-last-change record-number
+                         orig-string)
+      )
+    orig-string))
+
+;; TODO BOOKMARK new plan for rep-push-change-stack:
+;; Going backwards through change-metadata...
+;; Add previous to text-prop rep-change-stack for the string
+;; in the buffer.
+
+;; Eventually, you'll start hitting ones that *aren't* in the
+;; buffer
+
+;; I guess: you just look for the string at that location,
+;; and if it isn't there, you need to look down through the
+;; stack at (or near?) there.
+
+;; If all goes well, what you want to attach to next will be
+;; at the bottom.
+
+
+(defun rep-push-change-stack (orig beg end)
+  "Given the BEG and END of a range, pushes the ORIG string onto the stack.
+The stack in this case is the text-property \"rep-change-stack\".
+This operates on the current buffer. It is expected that the ORIG string
+will have appropriate properties added to it by
+\\[rep-setup-orig-string-properties]."
+  ;; We must push stack *for each char*. (Because each one may
+  ;; have a different history.)
+  (let* (
+         (buffy (current-buffer))
+         (stack ())
+         (i beg)
+         (fin (rep-adjust-end end beg))
+;;         (string
+;;            (buffer-substring beg fin))
+        )
+    (while (<= i fin)  ;; TODO check
+      (setq stack
+            (get-text-property i
+                               'rep-change-stack
+                               buffy))
+      (push orig stack)
+      (put-text-property i
+                         (1+ i)
+                         'rep-change-stack stack
+                         buffy)
+      (setq i (1+ i))
+      )))
+
+;; TODO DELETE
+(defun rep-push-change-stack-old (orig beg end)
+  "Given the BEG and END of a range, pushes the ORIG string onto the stack.
+The stack in this case is the text-property \"rep-change-stack\".
+This operates on the current buffer. It is expected that the ORIG string
+will have appropriate properties added to it by
+\\[rep-setup-orig-string-properties]."
+  ;; We must push stack *for each char*. (Because each one may
+  ;; have a different history.)
+  (let* (
+         (buffy (current-buffer))
+         (stack ())
+         (i beg)
+         (fin (rep-adjust-end end beg))
+;;         (string
+;;            (buffer-substring beg fin))
+        )
+    (while (<= i fin)  ;; TODO check
+      (setq stack
+            (get-text-property i
+                               'rep-change-stack
+                               buffy))
+      (push orig stack)
+      (put-text-property i
+                         (1+ i)
+                         'rep-change-stack stack
+                         buffy)
+      (setq i (1+ i))
+      )))
+
+(defun rep-pop-change-stack (beg end)
+  "Given the BEG and END of a range, pops the current state off of the stack.
+If the top of the stack for each character in the range contains the same
+string, it will return that string.  Otherwise, it will refuse to pop, and
+will return nil.
+The stack in this case is the text-property \"rep-change-stack\".
+This operates on the current buffer."
+  (let* (
+         (buffy (current-buffer))
+         (string "")
+         (stack ())
+         (fin (rep-adjust-end end beg))
+         (temp-list ())
+         )
+    ;; peek at top values of stack, ensure they're all equal
+    (let ((i beg))
+      (while (<= i fin)  ;; TODO check
+        (setq stack
+              (get-text-property i
+                                 'rep-change-stack
+                                 buffy))
+
+        (setq string
+              (substring-no-properties (nth 0 stack)))
+
+        (unless (stringp string)
+          (message "Not a string: %s" string))
+
+        (push string temp-list)
+        (setq i (1+ i))
+        ))
+    (cond ((not (rep-all-equal-p temp-list))
+           nil)
+          (t
+           (let ((i beg))
+             (while (<= i fin)  ;; TODO check
+               (setq stack
+                     (get-text-property i
+                                        'rep-change-stack
+                                        buffy))
+               (setq string
+                     (pop stack))
+               (put-text-property i
+                                  (1+ i)
+                                  'rep-change-stack stack
+                                  buffy)
+               (setq i (1+ i))
+               ))
+           string
+           ))
+    ))
+
+(defun rep-all-equal-p (string-list)
+  "Check that all elements in STRING-LIST are the same string.
+If the list is short, with less than two elements, this will return t,
+declaring them \"all-equal\" by definition."
+  (let* ((len (length string-list)))
+    (cond ((<= len 1) ;; for 0 or 1 elements, by definition, all are equal
+           t)
+          (t
+           (let* ((check-val (pop string-list)) ;; reference to compare all others
+                  (temp-list (mapcar (function
+                                      (lambda (str)
+                                        (string= str check-val)))
+                                     string-list))
+                  (accum t)
+                  )
+             (dolist (condy temp-list)
+               (setq accum (and accum condy))
+               )
+             accum)))))
 
 ;; Used by rep-markup-target-buffer-common
 (defun rep-adjust-end (end beg)
@@ -936,7 +1138,7 @@ length due to this undo."
                  (let* ((i 0)
                         record
                         )
-                   (while (< i count)  ;; TODO check
+                   (while (< i count)  ;; note: verified "<" is right
                      (setq record (aref rep-change-metadata i))
                      (if record
                          (let* (
@@ -948,17 +1150,33 @@ length due to this undo."
 
                                 (len    (+ (length orig) delta) )
                                 (new-record ())
-                                )
 
-                           ;; The thinking here: the change acts at the
-                           ;; point "undo-beg".  All locations after
-                           ;; that point need to be adjusted by "undo-delta"
+                                (pair (rep-divide-in-half undo-delta))
+                                (undo-delta-1 (nth 0 pair))
+                                (undo-delta-2 (nth 1 pair))
+                                )
+                           ;; Current thinking: change acts half at undo-beg,
+                           ;; and half at undo-end.
+
+                           ;; All locations after the point where a change
+                           ;; acts needs to be adjusted by the right
+                           ;; amount (roughly half).
                            (cond ((>= beg undo-beg)
-                                  (setq beg (- beg undo-delta))
+                                  (setq beg (- beg undo-delta-1))
                                   ))
                            (cond ((>= end undo-beg)
-                                  (setq end (- end undo-delta))
+                                  (setq end (- end undo-delta-1))
                                   ))
+
+                           (let ((old-end (- undo-end undo-delta))
+                                 )
+                             (cond ((>= beg old-end)
+                                    (setq beg (- beg undo-delta-2))
+                                    ))
+                             (cond ((>= end old-end)
+                                    (setq end (- end undo-delta-2))
+                                    ))
+                             )
 
                            (rep-set 'new-record 'pass   pass)
                            (rep-set 'new-record 'beg    beg)
@@ -979,10 +1197,32 @@ length due to this undo."
       (set-buffer initial-buffer)
       )))
 
+;; used by rep-revise-locations (currently)
+(defun rep-divide-in-half (integer)
+  "Given an INTEGER divides it roughly in half into two other integers.
+For an odd number input, the first will be one more than the second."
+  (let* ( (second (truncate (/ integer 2)))
+          (first (- integer second))
+          )
+    (list first second)))
+
 ;; used by: rep-substitutions-apply-to-other-window
 (defun rep-unserialize-change-metadata (data)
+  "Converts the raw DATA from rep.pl to a lisp data structure.
+That \"raw\" DATA is an aref of hrefs, and it is passed in JSON
+form, so simply using the json package to decode it gets an
+elisp array of alists."
+  (let* (
+         (change-metadata (json-read-from-string data))
+         )
+
+    change-metadata))
+
+;; TODO DELETE
+(defun rep-unserialize-change-metadata-old (data)
   "Converts the raw, serialized DATA from rep.pl to a lisp data structure.
-Creates a list of lists, with records in the same order as the lines of DATA."
+Creates an array of alists, with records in the same order as the
+lines of DATA."
   (let* ((substitution-lines
           (rep-split-on-semicolon-delimited-lines data)) ;; unwhacks quoted ";"
          (count (length substitution-lines))
@@ -1003,7 +1243,6 @@ Creates a list of lists, with records in the same order as the lines of DATA."
                     ;; (len    (+ (length orig) delta) )
                     (metadata-alist () )
                     )
-
                ;; each record an alist
                (rep-set 'metadata-alist 'pass   pass)
                (rep-set 'metadata-alist 'beg    beg)
@@ -1268,25 +1507,38 @@ system, which operates completely independently."
 
                   (orig-len  (length orig))
                   (expected-len (+ orig-len delta))
-                  (existing (buffer-substring-no-properties beg end))
+;;                   (existing (buffer-substring-no-properties beg end))
+;;                   (end (rep-unadjust-end end beg expected-len))
+
                   (end (rep-unadjust-end end beg expected-len))
+                  (existing (buffer-substring-no-properties beg end))
                   )
              (cond ((not (= expected-len (- end beg)))
                     (message (concat
                               (format "Can't revert fragment: %s. " existing)
                               "Must undo adjacent change first." )) )
                    (t
-                    (setq buffer-read-only nil)
-                    (delete-region beg end)
-                    (insert orig)
+                    (let* ((stringy ""))
+                      (setq buffer-read-only nil)
+;;; TODO BOOKMARK
+                      (setq stringy (rep-pop-change-stack beg end))
+                      (delete-region beg end)
+                      (insert stringy)
+;;; ;; ideally, check return from pop, if nil, bail with message
+;;; ;; could also compare length of string to length orig?
 
-                    (rep-revise-locations record-number buffer)
-                    (rep-refresh-markup-target-buffer buffer)
-                    (goto-char beg)
-                    (unless rep-live-dangerously
-                      (setq buffer-read-only t))
-                    (message "Change reverted: %s" existing)
-                    )))
+;; Old way:
+;;                    (insert orig)
+;; TODO any need to do this still?
+                      (rep-revise-locations record-number buffer)
+;; TODO BOOKMARK
+;;   Will this work now?
+                     (rep-refresh-markup-target-buffer buffer)
+                      (goto-char beg)
+                      (unless rep-live-dangerously
+                        (setq buffer-read-only t))
+                      (message "Change reverted: %s" existing)
+                      ))))
            ))))
 
 ;;--------
@@ -1395,9 +1647,28 @@ counting from the start of the buffer)."
 Example:
    (rep-get 'rep-general-alist 'C)
 Note: must quote alist name."
-  (let* ((value (assoc key (eval alist-symbol)))
+  (let* ((value (cdr (assoc key (eval alist-symbol))))
          )
-    (car (cdr value))
+
+    ;; blatant hackery... sometimes it's car/cdr, sometimes just cdr.
+    (setq value
+          (cond ((listp value)
+                 (car value)
+                 )
+                (t
+                 value
+                 )))
+
+    ;; automatic conversion of numeric strings to numbers
+    ;; (dammit, I'm a perl programmer!)
+    (cond ((not (stringp value))
+           value)
+          ((string-match "^[-+.0-9]+$" value)
+           (string-to-number (match-string 0 value))
+           )
+          (t
+           value)
+          )
     ))
 
 (defun rep-set (alist-symbol key value)
