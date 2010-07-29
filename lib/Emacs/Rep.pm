@@ -19,7 +19,7 @@ Emacs::Rep - find & replace backend for rep.pl and in-turn rep.el
   my $find_replaces_aref =
     parse_perl_substitutions( \$substitutions );
 
-  my $locations_aref =
+  my $change_metatdata_aref =
         do_finds_and_reps( \$text, $find_replaces_aref );
 
 
@@ -29,9 +29,9 @@ Emacs::Rep is a module that acts as a back-end for the
 rep.pl script which in turn is used by the emacs library.
 rep.el.
 
-It's purpose is to perform multiple perl substitution
-commands (e.g. s///g) on a given file, using emacs to
-interactively display and control the changes.
+It's purpose is to perform multiple perl substitution commands
+(e.g. s///g) on a given file, using and external program such as
+emacs to interactively display and control the changes.
 
 The end user isn't expected to need to use these routines
 (or even the rep.pl script) directly.
@@ -72,6 +72,7 @@ our %EXPORT_TAGS = ( 'all' => [
       define_nonbracketed_s_scraper_pat
       split_perl_substitutions
       dequote
+      divide_in_half
 
     ) ] );
 
@@ -103,30 +104,12 @@ Example usage:
 $locations_aref =
    do_finds_and_reps( \$text, $find_replaces_aref );
 
-The returned history is an aref of aref of arefs, e.g.
+The returned change metadata is an aref of hrefs
+(with keys: 'beg', 'end', 'delta', 'orig', and so on)
 
-  [
-    [
-     [ 219,  229, 6, 'jerk'],
-     [ 649,  659, 6, 'jerk'],
-     [1978, 1988, 6, 'jerk'],
-   ],
-   [
-     [ 402,  408, -3, 'conniving'],
-     [1620, 1626, -3, 'conniving'],
-   ],
-   [
-     [ 110,  118, -1, 'tasteless'],
-     [ 494,  502, -1, 'tasteless'],
-     [1672, 1680, -1, 'tasteless'],
-     [1697, 1705, -1, 'Tasteless'],
-   ],
-  ]
-
-The sub-arrays are records of changes made by a substitution.
-The change meta-data included is, in order: the beginning and
-end points, the delta (change in length), and the original
-string.
+The 'beg' and 'end' are the beginning and end points of the
+modified regions, 'delta' is the change in length, and 'orig' is
+the original string, before the change.
 
 The start and end points are in the form of integers counting
 from the start of the file, where the first character is 1.
@@ -139,6 +122,74 @@ See L<revise_locations>.
 =cut
 
 sub do_finds_and_reps {
+  my $text_ref      = shift;
+  my $find_replaces = shift; # aref of aref: a series of pairs
+
+  my $opts = shift;
+  my $LIVE_DANGEROUSLY = $opts->{ LIVE_DANGEROUSLY };
+
+  my $text_copy;
+  unless( $LIVE_DANGEROUSLY ) {
+    $text_copy = ${ $text_ref };
+  }
+
+  my @change_metadata;
+  eval {
+    for ( my $pass = 0; $pass <= $#{ $find_replaces }; $pass++ ) {
+      my ($find_pat, $replace) = @{ $find_replaces->[ $pass ] };
+      my $delta_sum = 0; # running total of deltas for the pass
+
+      ${ $text_ref } =~
+        s{$find_pat}
+         {
+           my $new = eval "return qq{$replace}";
+           my $l1 = length( $& );
+           my $l2 = length( $new );
+           my $delta = $l2 - $l1;
+           # in here, pos points at the start of the match, and it uses
+           # char numbering fixed at the start of the s///ge run
+           my $p = pos( ${ $text_ref } ) + 1 + $delta_sum;
+           my $beg = $p;
+           my $end = $p + $l2; # the end *after* the substitution
+
+           my $post = substr( $',  0, 10 );  # Note: no BOF/EOF errors
+           my $pre  = substr( $`, -10 );
+
+           push @change_metadata, {
+                         pass  => $pass,
+                         beg   => $beg,
+                         end   => $end,   # endpoint *after* change
+                         delta => $delta,
+                         orig  => $&,
+                         rep   => $new,
+                         pre   => $pre,
+                         post  => $post,
+                       };
+
+           $delta_sum += $delta;
+           $new
+         }ge;
+    }
+  };
+  if ($@) {
+    # Send error message to STDOUT so that it won't mess up test output.
+    # (and anyway, the elisp call shell-command-to-string merges in STDERR)
+    #
+    # The elisp function rep-run-perl-substitutions uses prefix "Problem".
+    # to spot error messages
+    print "Problem: $@\n";
+    # roll-back
+    @change_metadata = ();
+    unless( $LIVE_DANGEROUSLY ) {
+      ${ $text_ref } = $text_copy;
+    }
+  }
+  revise_locations( \@change_metadata );
+  return \@change_metadata; # array of hrefs (keys: beg, end, delta, orig, etc)
+}
+
+
+sub do_finds_and_reps_old {
   my $text_ref      = shift;
   my $find_replaces = shift; # aref of aref: a series of pairs
 
@@ -203,38 +254,40 @@ sub do_finds_and_reps {
 
 Example usage (note, revises structure in-place):
 
-  revise_locations( $locs );
+  revise_locations( $change_metadata );
 
-This compensates for a problem in the change history recorded
-by L<do_finds_and_reps>.
+Where the $change_metatdata is an aref of hrefs,
+with keys such as "beg", "eng", "delta", "orig",
+and so on.
 
-Later passes with another substitution command can move around
-the modified strings from previous passes.
+This compensates for a problem in the change history recorded by
+L<do_finds_and_reps>: Later passes with another substitution
+command can move around the modified strings from previous
+passes, so this routine does some numerical magic,
+re-interpreting previous passes in the light of later ones.
 
-This routine does some numerical magic, re-interpreting previous
-passes in the light of later ones.
+An example of some change metadata:
 
-An example of a change history:
+     beg     end   delta  orig
+    ----    ----   -----  -------
+       3      9     -4    'alpha'
+      39     47     10    'ralpha'
+     111    130      0    'XXX'
+     320    332    -33    'blvd'
 
- [
-  [ [ 3,       9,   -4,  'alpha'],
-    [ 39,     47,   10,  'ralpha'],
-    [ 111,   130,    0,  'XXX'],
-    [ 320,   332,  -33,  'blvd'],
-  ],
-  [ [ 12,     23,   6,  'widget'],
-    [ 33,     80,   6,  'wadget'],
-    [ 453,   532,   6,  'wandat'],
-  ],
- ]
+      12     23      6    'widget'
+      33     80      6    'wadget'
+      453   532      6    'wandat'
 
 Given this data, we can see that the first pass needs to be
-shifted forward by a delta of 6, acting at the end-point of each
-changed region.
+shifted forward by a delta of 6.
 
-So any locations after 23 need to have 6 added to them (and
-locations after 80 need another 6 and ones after 532 -- if there
-were any -- would need another 6).
+As written, currently this forward shift acts half at the beg
+point and half of the end-point of each changed region.
+
+So any locations after 12 and 23 need to have 3 added to them
+(and locations after 33 and 80 need another 3 and ones after 453
+and 532-- if there were any -- would need another 6).
 
 =cut
 
@@ -243,34 +296,147 @@ were any -- would need another 6).
 # them, i.e. to revise the beg  and end points.
 # The size of earlier deltas is untouched, but the position
 # the earlier deltas act upon is the revised position.
+# One more time: beg and end are the endpoints of the *modified* region,
+# after the change.
+
+# New approach: deltas are split roughly in half,
+# and applied at both the beginning and at the end of
+# the range.
+
+# Now, remember the context where these numbers were recorded:
+#    s{}{pos()}eg
+## pos() uses a fixed numbering, in spite of any length changes throughout s///g
+## so when a "pass" is completed, we need to revise *that pass*
+## and all of the *later* passes, which are the already processed ones,
+## because we're going in reverse.
 
 sub revise_locations {
+  my $data = shift;
+  my %delta;
+  my $last_pass = -1; # look ma, I'm defined.
+  # begin with the last row of data, and count down
+  for ( my $i = $#{ $data }; $i == 0; $i-- ) {
+    my $row = $data->[ $i ];
+    my $pass = $row->{ pass };
+
+    # deltas effect any locations after the point where they act
+    foreach my $spot ( sort {$a <=> $b} keys %delta) {
+      if ( $row->{ beg } >= $spot ) {     # TODO >= ok?
+        $row->{ beg } += $delta{ $spot };
+      }
+      if ( $row->{ end } >= $spot  ) {    # TODO >= ok?
+        $row->{ end } += $delta{ $spot };
+      }
+    } # end foreach spot
+
+    # when the pass number changes, revise %delta using
+    # all records already processed.
+
+    # Each record's delta acts half at the start and half at the
+    # end of the modified region.
+    if ($pass != $last_pass) {
+      for ( my $j = $#{ $data }; $j == $i; $j-- ) {
+        my $row = $data->[ $j ];
+        no warnings 'uninitialized';
+        my $delta = $row->{ delta };
+        my ($first, $second) = divide_in_half( $delta );
+        $delta{ $row->{ beg } } += $first;
+
+        my $old_end = $row->{ end } - $delta;
+        $delta{ $old_end } += $second;
+      } # end for $j, for each row *later* than the $i row
+    }
+    $last_pass = $pass;
+  } # end for $i, for each row
+}
+
+# TODO DELETE SOON
+# This version uses an aref of arefs still.
+sub revise_locations_oldish {
+#  ($debug) && print stderr "$0: revise_locations\n";
+  my $locs = shift;
+  # named array indicies for readability
+  my ($beg, $end, $delta, $orig ) = 0 .. 3;
+  my %delta;
+  foreach my $pass ( reverse @{ $locs } ) {
+
+    foreach my $row ( @{ $pass } ) {
+      foreach my $spot ( sort {$a <=> $b} keys %delta) {
+        if ( $row->[ $beg ] >= $spot ) {  # todo >= ok?
+          $row->[ $beg ] += $delta{ $spot };
+        }
+        if ( $row->[ $end ] >= $spot  ) { # TODO >= ok?
+          $row->[ $end ] += $delta{ $spot };
+        }
+      } # end foreach spot
+    } # end foreach row
+
+    foreach my $row ( @{ $pass } ) {
+      { no warnings 'uninitialized';
+        my $delta = $row->[ $delta ];
+        my ($first, $second) = divide_in_half( $delta );
+        $delta{ $row->[ $beg ] } += $first;
+
+        my $old_end = $row->[ $end ] - $delta;
+        $delta{ $old_end } += $second;
+      }
+    } # end foreach row
+
+  } # end foreach pass
+}
+
+
+=item divide_in_half
+
+Given an integer, splits roughly in half into two integers.
+
+For odd number input, the first "half" will be one larger than
+the second.
+
+=cut
+
+# Used by revise_locations.
+sub divide_in_half {
+  my $number = shift;
+  my $second = int( $number/2 );
+  my $first = $number - $second;
+  return ($first, $second);
+}
+
+### TODO DELETE
+sub revise_locations_old {
   my $locs = shift;
   # named array indicies for readability
   my ($BEG, $END, $DELTA, $ORIG ) = 0 .. 3;
   my %delta;
   foreach my $pass ( reverse @{ $locs } ) {
+
     foreach my $row ( @{ $pass } ) {
       foreach my $spot ( sort {$a <=> $b} keys %delta) {
-        if ( $row->[ $BEG ] >= $spot ) {
+        if ( $row->[ $BEG ] >= $spot ) {  # TODO >= ok?
           $row->[ $BEG ] += $delta{ $spot };
         }
-        if ( $row->[ $END ] >= $spot  ) {
+        if ( $row->[ $END ] >= $spot  ) { # TODO >= ok?
           $row->[ $END ] += $delta{ $spot };
         }
       } # end foreach spot
     } # end foreach row
+
     foreach my $row ( @{ $pass } ) {
       { no warnings 'uninitialized';
-        $delta{ $row->[ $END ] } += $row->[ $DELTA ];
+#        $delta{ $row->[ $END ] } += $row->[ $DELTA ];
+        $delta{ ($row->[ $END ] + 1) } += $row->[ $DELTA ];
       }
     } # end foreach row
+
   } # end foreach pass
 }
 
 =item serialize_change_metadata
 
-Serialize the locations data structure into a text form to be
+DEPRECATED.
+
+Serialize the change metadata into a text form to be
 passed to emacs.
 
 The result is a block of text, where each line has four
@@ -286,7 +452,7 @@ The fields:
   delta -- the change in character length due to the substitution
   orig  -- the original string that was replaced.
 
-The trailine semi-colon in this format allows it to work easily
+The trailing semi-colon in this format allows it to work easily
 on strings with embedded newlines.  Any embedded semi-colons,
 will be backslash escaped by this routine.
 
@@ -364,6 +530,7 @@ sub parse_perl_substitutions {
 
     my $raw_mods = join '', keys %{ $modifiers };
 
+    # TODO BEGIN VESTIGIAL MAYBE?
     my $open_bracket_pat =
       qr{ ( [({[<] )                            # )}]>
         }xms;
@@ -382,6 +549,7 @@ sub parse_perl_substitutions {
       dequote( \$find, $find_sep );
       dequote( \$rep,  $rep_sep  );
     }
+    # TODO END VESTIGIAL MAYBE?
 
     accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );
   }
