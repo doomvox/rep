@@ -119,7 +119,7 @@ GetOptions ("d|debug"           => \$DEBUG,
             "b|backup=s"        => \$backup_file,
             "f|target=s"        => \$target_file,
             "J|JSON"            => \$json_flag,
-            "T|trialrun"           => \$trailrun_flag,
+            "T|trialrun"        => \$trialrun_flag,
            ) or say_usage();
 
 # get a series of finds and replaces
@@ -160,7 +160,7 @@ unless (-d $backup_file_dir) {
 
 # During a trial run, we make a copy of the input file,
 # and don't write out the modifications to it.
-if ( $trailrun_flag ) {
+if ( $trialrun_flag ) {
   copy( $target_file, $backup_file ) or
     croak "can't copy $target_file to $backup_file: $!";
 } else {
@@ -186,7 +186,7 @@ if ($@) {
   carp "Problem applying finds and replaces: $@";
   rename( $backup_file, $target_file ); # rollback!
 } else {
-  if ( not( $trailrun_flag ) ) { # then don't modify input file
+  if ( not( $trialrun_flag ) ) { # then don't modify input file
     open my $fout, '>', $target_file or croak "$!";
     print {$fout} $text;
     close( $fout );
