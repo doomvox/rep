@@ -31,6 +31,12 @@ rep.pl - perform a series of find an replaces
      -v                show version
      --version         show version
 
+     -J                output in JSON rather than colon-seperated form
+     --JSON
+
+     -T                make no changes to the input file, but report
+     --trailrun        metadata for changes that would've been made.
+
 
 =head1 DESCRIPTION
 
@@ -48,12 +54,9 @@ replaced to perform undo operations.
 The elisp code must choose a unique backup file name. This makes
 it possible to do reverts of an entire run of substitutions.
 
-The script returns a serialized data dump of the history
-of the changes to the text.  See the documentation routine
-L<serialize_change_metadata> in L<Emacs::Rep> for full
-details of this output format.
-
-Roughly, you can expect output that looks like:
+The script returns a serialized data dump of the history of the
+changes to the text.  By default, you can expect output that
+looks like:
 
   0:303:308:1:cars;
   1:113:123:8:of;
@@ -77,6 +80,12 @@ starting with 1.
 The fifth field may contain colons, but semicolons should be
 escaped with a backslash.
 
+(See the documentation routine L<serialize_change_metadata> in
+L<Emacs::Rep> for full details of this output format.)
+
+If the script is run with a -J or --JSON option, JSON encoded
+data will be emitted instead of this colon-seperated format.
+
 =cut
 
 use warnings;
@@ -96,23 +105,29 @@ use FindBin qw( $Bin );
 use lib ("$Bin/../lib",
          "$HOME/End/Cave/Rep/Wall/Emacs-Rep/scripts/../lib"); # TODO
 use Emacs::Rep     qw( :all );
+use JSON; # encode_json
 
 our $VERSION = 0.06;
 my  $prog    = basename($0);
 
 my $DEBUG   = 0;                 # TODO set default to 0 when in production
-my ( $locs_temp_file, $reps_file, $backup_file, $target_file );
+my ( $locs_temp_file, $reps_file, $backup_file, $target_file, $json_flag, $trailrun_flag );
 GetOptions ("d|debug"           => \$DEBUG,
             "v|version"         => sub{ say_version(); },
             "h|?|help"          => sub{ say_usage();   },
             "s|substitutions=s" => \$reps_file,
             "b|backup=s"        => \$backup_file,
             "f|target=s"        => \$target_file,
+            "J|JSON"            => \$json_flag,
+            "T|trialrun"           => \$trailrun_flag,
            ) or say_usage();
 
 # get a series of finds and replaces
 #   either from the substitutions file,
 #   or from command-line (a series of strings from @ARGV),
+
+### TODO DEBUG  (( make up your mind: I think, just stick with JSON alone. ))
+$json_flag = 1;
 
 my $reps_text;
 if( $reps_file ) {
@@ -135,8 +150,23 @@ if ($@) {
   exit;
 }
 
-rename( $target_file, $backup_file ) or
-  croak "can't copy $target_file to $backup_file: $!";
+unless (-e $target_file) {
+  croak "file not found: $target_file";
+}
+my $backup_file_dir = dirname( $backup_file );
+unless (-d $backup_file_dir) {
+  croak "directory does not exist: $backup_file_dir";
+}
+
+# During a trial run, we make a copy of the input file,
+# and don't write out the modifications to it.
+if ( $trailrun_flag ) {
+  copy( $target_file, $backup_file ) or
+    croak "can't copy $target_file to $backup_file: $!";
+} else {
+  rename( $target_file, $backup_file ) or
+    croak "can't move $target_file to $backup_file: $!";
+}
 
 my $text;
 { undef $/;
@@ -147,22 +177,30 @@ my $text;
 
 # Apply the finds and replaces to text, recording the
 # change meta-data
-my $locations_aref;
+my $change_metadata_aref;
 eval {
-  $locations_aref =
+  $change_metadata_aref =
     do_finds_and_reps( \$text, $find_replaces_aref );
 };
 if ($@) {
   carp "Problem applying finds and replaces: $@";
   rename( $backup_file, $target_file ); # rollback!
 } else {
-  open my $fout, '>', $target_file or croak "$!";
-  print {$fout} $text;
-  close($fout);
+  if ( not( $trailrun_flag ) ) { # then don't modify input file
+    open my $fout, '>', $target_file or croak "$!";
+    print {$fout} $text;
+    close( $fout );
+  }
 
   # serialize the data to pass to emacs
-  my $flat_locs = serialize_change_metadata( $locations_aref );
-  print $flat_locs;
+  if ($json_flag) {
+    my $chg_md_json = encode_json( $change_metadata_aref );
+    print $chg_md_json;
+  } else {
+    my $flat_chg_md = serialize_change_metadata( $change_metadata_aref );
+    print $flat_chg_md;
+  }
+
 }
 
 ### end main, into the subs
