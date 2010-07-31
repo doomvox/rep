@@ -646,6 +646,7 @@ t will leave bindings for tab and backtab alone."
                "
             ))
          )
+  ;; TODO SOON maybe remove these from the minor-mode?
   (unless dont-touch-tab
     (setq define-perl-bindings-string
           (concat define-perl-bindings-string
@@ -828,8 +829,12 @@ Requires the METADATA to be in a list-of-alists form."
   (setq rep-font-lock-buffer-status font-lock-mode)
   (font-lock-mode -1)
 
-  (setq rep-tab-binding
-        (lookup-key (current-global-map) "\C-i"))  ;; TODO SOON n.g. hackery!
+;; TODO BOOKMARK tab exp
+;;  (setq rep-tab-binding
+;;        (lookup-key (current-global-map) "\C-i"))  ;; hack (eh)
+  (setq rep-tab-binding indent-line-function)
+  (make-variable-buffer-local 'indent-line-function)
+  (setq indent-line-function 'rep-modified-skip-to-next-change)
 
   (rep-modified-mode t)
 
@@ -1178,6 +1183,7 @@ Restores the standard syntax coloring, etc."
         (font-lock-fontify-buffer)
     ;;   ))
 
+    ;; TODO BOOKMARK TAB EXP
     ;; manually restoring behavior of tab (nasty hack)  TODO SOON
     ;;    (local-set-key [tab] 'indent-according-to-mode)
     (local-set-key [tab] rep-tab-binding)
