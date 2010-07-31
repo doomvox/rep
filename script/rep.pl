@@ -25,14 +25,13 @@ rep.pl - perform a series of find an replaces
      -B                backup file name
      --backup          same
 
+     --trial           report change metadata without modifying target file
+
      -d                debug messages on
      --debug           same
      -h                help (show usage)
      -v                show version
      --version         show version
-
-     -J                output in JSON rather than colon-seperated form
-     --JSON
 
      -T                make no changes to the input file, but report
      --trailrun        metadata for changes that would've been made.
@@ -54,37 +53,25 @@ replaced to perform undo operations.
 The elisp code must choose a unique backup file name. This makes
 it possible to do reverts of an entire run of substitutions.
 
-The script returns a serialized data dump of the history of the
-changes to the text.  By default, you can expect output that
-looks like:
+The script returns a data dump of the history of the changes to
+the text.  This is in the form of an array of hashes, serialized
+using JSON.
 
-  0:303:308:1:cars;
-  1:113:123:8:of;
-  1:431:441:8:of;
-  1:596:606:8:of;
-  2:330:355:23:.;
-  3:702:711:0:evening;
-  4:855:863:4:cane;
+The array is in the order in which the individual changes took
+place.  Each row has fields:
 
-Where the colon separated fields are:
+  pass   the number of the "pass" through the file
+         (one pass per substitution command)
+  beg    begin point of changed string
+  end    end point of changed string
+  delta  the change in string length
+  orig   the original string that was replaced
+  rep    the replacement string that was substituted
+  pre    up to ten characters found before the replacement
+  post   up to ten characters found after the replacement
 
- first: the "pass" through the file (one pass per substitution command)
- second: begin point of changed string
- third:  end point of changed string
- fourth: the delta, the change in string length
- fifth: the original string that was replaced
-
-Characters are counted from the beginning of the text,
-starting with 1.
-
-The fifth field may contain colons, but semicolons should be
-escaped with a backslash.
-
-(See the documentation routine L<serialize_change_metadata> in
-L<Emacs::Rep> for full details of this output format.)
-
-If the script is run with a -J or --JSON option, JSON encoded
-data will be emitted instead of this colon-seperated format.
+Note: in "beg" and "end" characters are counted from the
+beginning of the text, starting with 1.
 
 =cut
 
@@ -111,23 +98,19 @@ our $VERSION = 0.06;
 my  $prog    = basename($0);
 
 my $DEBUG   = 0;                 # TODO set default to 0 when in production
-my ( $locs_temp_file, $reps_file, $backup_file, $target_file, $json_flag, $trailrun_flag );
+my ( $locs_temp_file, $reps_file, $backup_file, $target_file, $trialrun_flag );
 GetOptions ("d|debug"           => \$DEBUG,
             "v|version"         => sub{ say_version(); },
             "h|?|help"          => sub{ say_usage();   },
             "s|substitutions=s" => \$reps_file,
             "b|backup=s"        => \$backup_file,
             "f|target=s"        => \$target_file,
-            "J|JSON"            => \$json_flag,
             "T|trialrun"        => \$trialrun_flag,
            ) or say_usage();
 
 # get a series of finds and replaces
 #   either from the substitutions file,
 #   or from command-line (a series of strings from @ARGV),
-
-### TODO DEBUG  (( make up your mind: I think, just stick with JSON alone. ))
-$json_flag = 1;
 
 my $reps_text;
 if( $reps_file ) {
@@ -191,16 +174,9 @@ if ($@) {
     print {$fout} $text;
     close( $fout );
   }
-
-  # serialize the data to pass to emacs
-  if ($json_flag) {
-    my $chg_md_json = encode_json( $change_metadata_aref );
-    print $chg_md_json;
-  } else {
-    my $flat_chg_md = serialize_change_metadata( $change_metadata_aref );
-    print $flat_chg_md;
-  }
-
+ # serialize the data to pass to emacs
+ my $chg_md_json = encode_json( $change_metadata_aref );
+ print $chg_md_json;
 }
 
 ### end main, into the subs
