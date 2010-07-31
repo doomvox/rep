@@ -117,6 +117,8 @@
 
 ;; SET-UP CUSTOMIZATION
 
+;;   TODO REVISE!
+
 ;; The easy way to get the standard (i.e. documented) behavior
 ;; is just to use (rep-standard-setup)
 
@@ -446,18 +448,23 @@ If the sub-directory does not exist, this will create it. "
 ;;      other window once it's been modified.  This has keybindings to
 ;;      examine, undo, revert or accept the changes.
 
-(defun rep-standard-setup (&optional prefix)
-  "A consolidating routine to set-up keybindings and so on.
+(defun rep-standard-setup (&optional dont-touch-tab)
+  "Perform the standard set-up operations.
+Calling this is intended to be a single step to get useful
+keybindings and so on.
 If you agree with our ideas about set-up, you can just run this,
-if you'd rather do it yourself, then skip this: this code
-is unobtrusive by default."
+if you'd rather do it yourself, then skip this, and the rep.el
+package will use more unobtrusive defaults.
+Note: the \"standard\" behavior is what is better documented.
+If the optional DONT-TOUCH-TAB flag is set to t, tab and backtab
+bindings should be left alone."
   (if rep-trace (message "%s" "rep-standard-setup"))
   (cond ((rep-probe-for-rep-pl)
          (message "rep.pl must be in PATH for rep.el to work.")
          ))
-  (unless prefix (setq prefix "\C-c."))
-  (rep-define-entry-key  prefix)
-  (rep-define-rep-modified-mode-keybindings prefix)
+
+  (unless dont-touch-tab
+    (rep-define-rep-modified-rebind-tab))
 
   (add-to-list
    'auto-mode-alist
@@ -465,8 +472,6 @@ is unobtrusive by default."
 
   ;; two forms of "do-it" for the substitutions: C-x# and C-c.r
   (define-key rep-substitutions-mode-map "\C-x#"
-    'rep-substitutions-apply-to-other-window)
-  (define-key rep-substitutions-mode-map (format "%sr" prefix)
     'rep-substitutions-apply-to-other-window)
   )
 
@@ -601,8 +606,39 @@ Choosing the file name and location is a job for routines such as
 Derived from cperl-mode, because we're editing substitutions
 that use perl's syntax \(and are interpreted using perl\).
 \\{rep-substitutions-mode-map}"
-  (use-local-map rep-substitutions-mode-map)
+  (use-local-map rep-substitutions-mode-map))
+
+;; TODO move up?
+(defcustom rep-key-prefix [(control ?c) ?.]
+  "Prefix key to use for the rep-modified-mode minor mode.
+The value of this variable is checked as part of loading rep-modififed-mode.
+After that, changing the prefix key requires manipulating keymaps."
+  ;; Note: the following "FIXME" is from footnote.el:
+  ;; FIXME: the type should be a key-sequence, but it seems Custom
+  ;; doesn't support that yet.
+  ;; :type  'string
   )
+
+(defvar rep-modified-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "w"
+      'rep-modified-what-was-changed-here-verbose)
+    (define-key map "x"
+      'rep-modified-examine-properties-at-point)
+    (define-key map "X" 'describe-text-properties)
+    (define-key map "u" 'rep-modified-undo-change-here)
+    (define-key map "R" 'rep-modified-revert-all-changes)
+    (define-key map "@" 'rep-modified-accept-changes)
+    (define-key map "A" 'rep-modified-accept-changes)
+    (define-key map "n" 'rep-modified-skip-to-next-change)
+    (define-key map "p" 'rep-modified-skip-to-prev-change)
+    map))
+
+(defvar rep-modified-minor-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map rep-key-prefix rep-modified-mode-map)
+    map)
+  "Keymap used for binding rep-modified minor mode.")
 
 (define-minor-mode rep-modified-mode
   "Toggle Rep Modified mode.
@@ -614,51 +650,22 @@ that use perl's syntax \(and are interpreted using perl\).
      to examine and undo the changes made by rep substitutions.
      These are commands such as \\[rep-modified-undo-change-here], and
       \\[rep-modified-revert-all-changes].
-See \\[rep-define-rep-modified-mode-keybindings] or \\[rep-standard-setup]."
+      See: \\{rep-modified-mode-map}."
   ;; The initial value.
   :init-value nil
   ;; The indicator for the mode line.
   :lighter " Rep"
+  :keymap     rep-modified-minor-mode-map
   )
 
-(defun rep-define-rep-modified-mode-keybindings (&optional prefix
-                                                           dont-touch-tab)
-  "Defines the keybindings in rep-modified-mode using given PREFIX.
-The PREFIX defaults to the 'C-c .'.  Optional flag DONT-TOUCH-TAB if set to
-t will leave bindings for tab and backtab alone."
-  (if rep-trace (message "%s" "rep-define-rep-modified-mode-keybindings"))
-;; TODO seems heavy-handed (potential security hole if prefix is untrusted?)
-;; but it works, for now...
-  (unless prefix (setq prefix "\C-c."))
-  (let ( (define-perl-bindings-string
-           (replace-regexp-in-string
-            "%s" prefix
-            "'(lambda ()
-              (local-set-key \"%sw\"  'rep-modified-what-was-changed-here-verbose)
-              (local-set-key \"%sx\"  'rep-modified-examine-properties-at-point)
-              (local-set-key \"%sX\"  'describe-text-properties)
-              (local-set-key \"%su\"  'rep-modified-undo-change-here)
-              (local-set-key \"%sR\"  'rep-modified-revert-all-changes)
-              (local-set-key \"%s@\"  'rep-modified-accept-changes)
-              (local-set-key \"%sA\"  'rep-modified-accept-changes)
-              (local-set-key \"%sn\"  'rep-modified-skip-to-next-change)
-              (local-set-key \"%sp\"  'rep-modified-skip-to-prev-change)
-               "
-            ))
-         )
-  ;; TODO SOON maybe remove these from the minor-mode?
-  (unless dont-touch-tab
-    (setq define-perl-bindings-string
-          (concat define-perl-bindings-string
-             "(local-set-key [tab]     'rep-modified-skip-to-next-change)
-              (local-set-key [backtab] 'rep-modified-skip-to-prev-change)"
-                  )))
 
-  (setq define-perl-bindings-string (concat define-perl-bindings-string ")"))
-
-  (add-hook 'rep-modified-mode-hook (eval (read define-perl-bindings-string)))
-  ))
-
+(defun rep-define-rep-modified-rebind-tab ()
+  "Re-binds the tab (and backtab) key in rep-modified-mode."
+  (define-key rep-modified-minor-mode-map [tab]
+    'rep-modified-skip-to-next-change)
+  (define-key rep-modified-minor-mode-map [backtab]
+    'rep-modified-skip-to-prev-change)
+  )
 
 ;;--------
 ;; rep-substitutions-mode function(s)
@@ -732,8 +739,7 @@ Turns off font-lock to avoid conflict with existing syntax coloring."
 (defun rep-generate-backup-file-name (file)
   "Given a FILE name, generate a unique backup file name.
 If `rep-standard-backup-location' is non-nil, it will be used
-as the standard location for backups, otherwise, a \".rep\"
-sub-directory will be used in parallel with the FILE."
+as the standard location for backups, otherwise, a "e"sb -directory will be used in parallel with the FILE."
   (interactive)
   (if rep-trace (message "%s" "rep-generate-backup-file-name"))
   (let* ((file-location (file-name-directory file))
@@ -829,12 +835,9 @@ Requires the METADATA to be in a list-of-alists form."
   (setq rep-font-lock-buffer-status font-lock-mode)
   (font-lock-mode -1)
 
-;; TODO BOOKMARK tab exp
-;;  (setq rep-tab-binding
-;;        (lookup-key (current-global-map) "\C-i"))  ;; hack (eh)
-  (setq rep-tab-binding indent-line-function)
-  (make-variable-buffer-local 'indent-line-function)
-  (setq indent-line-function 'rep-modified-skip-to-next-change)
+  ;; manually preserving existing tab binding (nasty hack)
+  (setq rep-tab-binding
+        (lookup-key (current-global-map) "\C-i"))
 
   (rep-modified-mode t)
 
@@ -1183,9 +1186,7 @@ Restores the standard syntax coloring, etc."
         (font-lock-fontify-buffer)
     ;;   ))
 
-    ;; TODO BOOKMARK TAB EXP
-    ;; manually restoring behavior of tab (nasty hack)  TODO SOON
-    ;;    (local-set-key [tab] 'indent-according-to-mode)
+    ;; manually restoring behavior of tab (nasty hack)
     (local-set-key [tab] rep-tab-binding)
     (rep-kick-props)
     (save-buffer)
