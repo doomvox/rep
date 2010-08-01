@@ -94,7 +94,7 @@ use lib ("$Bin/../lib",
 use Emacs::Rep     qw( :all );
 use JSON; # encode_json
 
-our $VERSION = 0.06;
+our $VERSION = 0.07;
 my  $prog    = basename($0);
 
 my $DEBUG   = 0;                 # TODO set default to 0 when in production

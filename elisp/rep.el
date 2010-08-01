@@ -125,7 +125,7 @@
 ;;---------
 ;;  User Options, Variables
 
-(defvar rep-version "0.06"
+(defvar rep-version "0.07"
  "Version number of the rep.el elisp file.
 This version should match the versions of
 the rep.pl script and the Rep.pm \(Emacs::Rep\)
