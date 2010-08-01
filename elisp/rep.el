@@ -58,21 +58,18 @@
 ;;   (require 'rep)
 ;;   (rep-standard-setup)
 
-;; For setup customization alternatives to the "rep-standard-setup",
-;; see SET-UP CUSTOMIZATION below.
-
 ;; USAGE
 
-;; When editing a file you'd like to modify interactively
-;; using perl substitution commands (usually of the from
-;; s///g;), you can use "C-c.S" to open a small window suitable
-;; for entering a series of substitution commands. When you're
-;; ready, "C-c.R" will run these substitutions on the other
-;; window.
+;; When editing a file you'd like to modify you can use "C-c.S" to open a
+;; small window suitable for entering a series of perl substitution
+;; commands, typically of the form: "s/<find_pattern>/<replace_string>/g;".
+
+;; When you're ready to try them, "C-c.R" will run these substitutions on
+;; the other window.
 
 ;; The usual font-lock syntax coloring will be temporarily
-;; shut-off, so that changed strings can be indicated with
-;; colors that correspond to the particular s///g command that
+;; shut-off, so that modified strings can be indicated easily,
+;; with colors correspond to the particular s///g command that
 ;; made the change.
 
 ;; In the buffer for the modified file a "rep-modified-mode" minor
@@ -81,78 +78,27 @@
 
 ;;    TAB       rep-modified-skip-to-next-change
 ;;              You can easily skip to the next change with the tab key.
-
-;;    "C-c.w"   rep-modified-what-was-changed-here-verbose
-;;              Tells you want the changed string at the cursor
-;;              was before it was modified.
+;;              The message in the status bar tells you what it was
+;;              before the change.
 
 ;;    "C-c.u"   rep-modified-undo-change-here
 ;;              Does an undo of an individual change, changing it back
 ;;              to the string indicated with "C-c.w".
-;;              Note: there's no relation between this and the usual emacs
-;;              undo mechanism, they operate independantly.
 
 ;;    "C-c.R"   rep-modified-revert-all-changes
-;;              All of the changes from a run of substitutions
-;;              can be reverted all at once, using this command.
+;;              Reverts all of the changes at once.
 ;;              If there have been multiple substitutions runs
 ;;              on the same file-buffer, repeated uses of this
 ;;              command will continue reverting the previous run.
 
 ;;     "C-c.A"  rep-modified-accept-changes
-;;              When you're convinced that the substitutions run did
+;;              When you're convinced that the substitutions did
 ;;              what you wanted, you can use this to accept the changes
 ;;              and get your normal syntax coloring back.
 
 ;;  Note that the *.rep files you create with C-c.S can be run again
 ;;  on other files.  This should simplify making similar changes to
-;;  a large number of files (though at present there are no recursive
-;;  descent features provided by this library).
-
-;;  Additionally, there's the command:
-
-;;    "C-c.x"   rep-modified-examine-properties-at-point
-;;              This is more informative than C-c.w, but less neat.
-
-
-;; SET-UP CUSTOMIZATION
-
-;;   TODO REVISE!
-
-;; The easy way to get the standard (i.e. documented) behavior
-;; is just to use (rep-standard-setup)
-
-;; If you'd like different behavior, here are some hints:
-
-;; You can choose a different standard key prefix (other than the
-;; default "Control-c .") easily enough like so:
-
-;;   (rep-standard-setup "\C-c|")  ;; "Control-c vertical-bar"
-
-;; The standard set-up is roughly equivalent to the following
-;; (so you can start with this and edit it as you like):
-
-;;   (global-set-key "C-c.S" 'rep-open-substitutions)
-;;   (add-to-list
-;;    'auto-mode-alist
-;;    '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
-;;   (define-key rep-substitutions-mode-map "\C-c.R"
-;;     'rep-substitutions-apply-to-other-window)
-;;   (rep-define-rep-modified-mode-keybindings "\C-c.")
-
-;; And that last line can be expanded still further, into
-;; something like:
-
-;;     (add-hook 'rep-modified-mode-hook
-;;           '(lambda ()
-;;              (local-set-key "%sw"  'rep-modified-what-was-changed-here-verbose)
-;;              (local-set-key "%sx"  'rep-modified-examine-properties-at-point)
-;;              (local-set-key "%su"  'rep-modified-undo-change-here)
-;;              (local-set-key "%sR"  'rep-modified-revert-all-changes)
-;;              (local-set-key "%sA"  'rep-modified-accept-changes)
-;;              (local-set-key [tab]  'rep-modified-skip-to-next-change)
-;;              (local-set-key [backtab]  'rep-modified-skip-to-prev-change)
-;;              ))
+;;  a large number of files.
 
 ;; For more information:
 
@@ -207,13 +153,6 @@ This allows us to remember that font-lock-mode was on, and should be
 re-enabled after changes are accepted.")
 (make-variable-buffer-local 'rep-font-lock-buffer-status)
 
-(defvar rep-tab-binding nil
-  "Buffer local storage to preserve the current tab key binding.
-The rep-modified-mode minor-mode rebinds this, but sometimes that
-can persist after the minor mode is shut-off, so we use this to
-make sure.")
-(make-variable-buffer-local 'rep-tab-binding)
-
 (defvar rep-default-substitutions-directory nil
   "The location to place newly created files of substitution commands.
 Note: include a trailing slash.
@@ -249,11 +188,11 @@ all integers except for orig, which is a string.")
 (make-variable-buffer-local 'rep-change-metadata)
 (put 'rep-change-metadata 'risky-local-variable t)
 
-
+;; TODO Document?
 ;; Text properties:
 ;;   rep-last-change
 ;;   rep-change-stack
-;; Document?
+
 
 ;;--------
 ;; colorized faces used to mark-up changes
@@ -308,7 +247,7 @@ all integers except for orig, which is a string.")
  "Faces keyed by number (an integer to font association).
 Used by function \\[rep-lookup-markup-face].")
 ;; hardcoded look-up table (stupid, but simple)
-;; TODO (1) look into vectors... or just use array?
+;; TODO (1) look into vectors... or just use an array?
 ;;      (2) have rep-make-face generate.
 (setq rep-face-alist
       '(
@@ -358,7 +297,6 @@ routine will wrap around and begin reusing the low-numbered faces.
 If PASS is nil, this will return nil.
 Underlining may be turned on with `rep-underline-changes-color'."
   (if rep-trace (message "%s" "rep-lookup-markup-face"))
-;;  (interactive "npick a number: ") ;; DEBUG
   (cond (pass
          (let ( markup-face limit index )
            (setq limit (length rep-face-alist) )
@@ -470,7 +408,6 @@ bindings should be left alone."
    'auto-mode-alist
    '("\\.\\(rep\\)\\'" . rep-substitutions-mode))
 
-  ;; two forms of "do-it" for the substitutions: C-x# and C-c.r
   (define-key rep-substitutions-mode-map "\C-x#"
     'rep-substitutions-apply-to-other-window)
   )
@@ -608,7 +545,6 @@ that use perl's syntax \(and are interpreted using perl\).
 \\{rep-substitutions-mode-map}"
   (use-local-map rep-substitutions-mode-map))
 
-;; TODO move up?
 (defcustom rep-key-prefix [(control ?c) ?.]
   "Prefix key to use for the rep-modified-mode minor mode.
 The value of this variable is checked as part of loading rep-modififed-mode.
@@ -831,13 +767,9 @@ text.
 Requires the METADATA to be in a list-of-alists form."
   (if rep-trace (message "%s" "rep-markup-target-buffer-replay-perl-changes"))
   (set-buffer target-buffer)
-  ;; if font-lock-mode was on, save that information
+  ;; if font-lock-mode was on in target, save that information
   (setq rep-font-lock-buffer-status font-lock-mode)
   (font-lock-mode -1)
-
-  ;; manually preserving existing tab binding (nasty hack)
-  (setq rep-tab-binding
-        (lookup-key (current-global-map) "\C-i"))
 
   (rep-modified-mode t)
 
@@ -1054,7 +986,12 @@ Defaults to current buffer."
   (unless buffer
     (setq buffer (current-buffer)))
   (set-buffer buffer)
-  (remove-list-of-text-properties (point-min) (point-max) '(rep-last-change))
+  (remove-list-of-text-properties (point-min) (point-max)
+                                  '(rep-last-change
+                                    rep-change-stack
+                                    ))
+  ;; clears *all* face settings.  if you want some, font-lock
+  ;; better put 'em there.  (TODO)
   (remove-text-properties (point-min) (point-max) '(face nil))
   )
 
@@ -1085,8 +1022,6 @@ to \\[rep-lookup-markup-face]\).
 Presumes all substitution commands begin with \"s\".
 Acts on the given BUFFER, but leaves the current window active."
   (if rep-trace (message "%s" "rep-markup-substitution-lines"))
-  ;; if font-lock-mode was on, save that information
-  (setq rep-font-lock-buffer-status font-lock-mode)
   (save-excursion ;; but that trick *never* works... so don't trust it
     (let* ( (original-buffer (current-buffer))
             (comment_pat  "^\s*?#")
@@ -1169,7 +1104,6 @@ Uses the `rep-previous-versions-stack' buffer local variable."
 
 ;; TODO could write an inverse of this:
 ;;     rep-modified-display-changes-again
-;; (maybe: have C-u prefix do the inverse?)
 (defun rep-modified-accept-changes ()
   "Accept changes made in buffer, return to normal state.
 Restores the standard syntax coloring, etc."
@@ -1179,15 +1113,13 @@ Restores the standard syntax coloring, etc."
         )
     (setq buffer-read-only nil)
     (rep-modified-mode -1)
+
     ;; turn font-lock back on if it was on
-    ;; TODO buffer-local amnesia problem. Just turn it on.
-    ;;(cond (rep-font-lock-buffer-status
+    (cond (rep-font-lock-buffer-status
         (font-lock-mode 1)
         (font-lock-fontify-buffer)
-    ;;   ))
+        ))
 
-    ;; manually restoring behavior of tab (nasty hack)
-    (local-set-key [tab] rep-tab-binding)
     (rep-kick-props)
     (save-buffer)
     ;; also restore cperl syntax colors in substitutions window

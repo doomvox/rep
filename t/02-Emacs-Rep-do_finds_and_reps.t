@@ -9,7 +9,7 @@ my $DEBUG = 0;             # TODO set to 0 before ship
 use Data::Dumper::Perltidy;
 
 use Test::More;
-BEGIN { plan tests => 13 }; # TODO revise test count
+BEGIN { plan tests => 12 };
 
 use FindBin qw( $Bin );
 use lib "$Bin/../lib";
@@ -34,10 +34,10 @@ BEGIN {
         do_finds_and_reps( \$text, $find_reps );
 
   ($DEBUG) && print Dumper( $locs );
-
   ($DEBUG) && print Dumper( $text );
 
   my $expected = define_expected_locs( 'first' );
+
   is_deeply( $locs, $expected,
              "$test_name: first case" );
 
@@ -45,19 +45,20 @@ BEGIN {
   is( $text, $expected_text,
              "$test_name: first case" );
 
-  my $report = serialize_change_metadata( $locs );
-  ($DEBUG) && print "report:\n$report\n";
+# Dropping test of deprecated routine:
+#   my $report = serialize_change_metadata( $locs );
+#   ($DEBUG) && print "report:\n$report\n";
 
-my $expected_report=<<"EXPECTORANT";
-0:622:630:2:stocky;
-1:632:640:2:square;
-2:605:608:-7:individual;
-EXPECTORANT
+# my $expected_report=<<"EXPECTORANT";
+# 0:622:630:2:stocky;
+# 1:632:640:2:square;
+# 2:605:608:-7:individual;
+# EXPECTORANT
 
-# was:
-# 2:594:597:-7:individual
+# # was:
+# # 2:594:597:-7:individual
 
-  is( $report, $expected_report, "Testing serialize_change_metadata" );
+#   is( $report, $expected_report, "Testing serialize_change_metadata" );
 }
 
 {
@@ -88,14 +89,14 @@ EXPECTORANT
 
   ($DEBUG) && print "substitutions\n: $substitutions\n";
 
-  my $report_1 = serialize_change_metadata( $locs );
-  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
+#  my $report_1 = serialize_change_metadata( $locs );
+#  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
 
   revise_locations( $locs );
   ($DEBUG) && print "revised locs: ", Dumper( $locs ), "\n";
 
-  my $report_2 = serialize_change_metadata( $locs );
-  ($DEBUG) && print "report after revise_locations:\n$report_2\n";
+#  my $report_2 = serialize_change_metadata( $locs );
+#  ($DEBUG) && print "report after revise_locations:\n$report_2\n";
 
    my $expected_revlocs = define_expected_locs( 'second_revised' );
 
@@ -136,13 +137,13 @@ EXPECTORANT
   ($DEBUG) && print "substitutions\n: $substitutions\n";
 
   ($DEBUG) && print "third locs: ", Dumper( $locs );
-  my $report_1 = serialize_change_metadata( $locs );
+#  my $report_1 = serialize_change_metadata( $locs );
 #  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
 
   revise_locations( $locs );
   ($DEBUG) && print "revised locs: ", Dumper( $locs );
 
-  my $report_2 = serialize_change_metadata( $locs );
+#  my $report_2 = serialize_change_metadata( $locs );
 #  ($DEBUG) && print "report before revise_locations:\n$report_2\n";
 
    my $expected_revlocs = define_expected_locs( 'third_revised' );
@@ -181,13 +182,13 @@ EXPECTORANT
   ($DEBUG) && print "substitutions\n: $substitutions\n";
 
   ($DEBUG) && print "fourth locs: ", Dumper( $locs );
-  my $report_1 = serialize_change_metadata( $locs );
+#  my $report_1 = serialize_change_metadata( $locs );
 #  ($DEBUG) && print "report before revise_locations:\n$report_1\n";
 
   revise_locations( $locs );
   ($DEBUG) && print "revised locs: ", Dumper( $locs );
 
-  my $report_2 = serialize_change_metadata( $locs );
+#  my $report_2 = serialize_change_metadata( $locs );
 #  ($DEBUG) && print "report before revise_locations:\n$report_2\n";
 
    my $expected_revlocs = define_expected_locs( 'fourth' );
@@ -295,80 +296,536 @@ sub define_expected_locs {
 
   my $expected =
     { 'first' =>
-    [
-        [ [ 622, 630, 2,  'stocky' ] ],
-        [ [ 632, 640, 2,  'square' ] ],
-        [ [ 605, 608, -7, 'individual' ] ]
-    ],
+      [
+       {
+        'beg'  => 629,
+        'pass' => 0,
+        'post' => ', square-f',
+        'pre'  => 'e
+other a ',
+        'end'   => 637,
+        'delta' => 2,
+        'orig'  => 'stocky',
+        'rep'   => 'stockish'
+       },
+       {
+        'beg'   => 639,
+        'pass'  => 1,
+        'post'  => '-faced man',
+        'pre'   => 'stockish, ',
+        'end'   => 647,
+        'delta' => 2,
+        'orig'  => 'square',
+        'rep'   => 'squarish'
+       },
+       {
+        'beg'  => 605,
+        'pass' => 2,
+        'post' => '; the
+othe',
+        'pre'   => 'ay-haired ',
+        'end'   => 608,
+        'delta' => -7,
+        'orig'  => 'individual',
+        'rep'   => 'MAN'
+       }
+      ]
+      ,
       'second' =>
-    [
-        [ [ 261, 266, 1,  'cars' ] ],
-        [ [ 573, 580, 0,  'evening' ] ],
-        [ [ 54,  74,  16, 'midnight' ] ],
-        [ [ 62,  74,  -4, 'MIDNIGHTmidnight' ] ]
-    ],
+      [
+       {
+        'beg'   => 249,
+        'pass'  => 0,
+        'post'  => ' lined the',
+        'pre'   => '   Parked ',
+        'end'   => 254,
+        'delta' => 1,
+        'orig'  => 'cars',
+        'rep'   => 'bikes'
+       },
+       {
+        'beg'   => 561,
+        'pass'  => 1,
+        'post'  => ' clothes. ',
+        'pre'   => 'ressed in ',
+        'end'   => 568,
+        'delta' => 0,
+        'orig'  => 'evening',
+        'rep'   => 'women\'s'
+       },
+       {
+        'beg'   => 54,
+        'pass'  => 2,
+        'post'  => '. From the',
+        'pre'   => '   IT was ',
+        'end'   => 78,
+        'delta' => 16,
+        'orig'  => 'midnight',
+        'rep'   => 'midnightMIDNIGHTmidnight'
+       },
+       {
+        'beg'   => 62,
+        'pass'  => 3,
+        'post'  => '. From the',
+        'pre'   => 's midnight',
+        'end'   => 74,
+        'delta' => -4,
+        'orig'  => 'MIDNIGHTmidnight',
+        'rep'   => ' (midnacht!)'
+       }
+      ],
       'second_revised' =>
       [
-       [ [ 273, 278, 1,  'cars' ] ],
-       [ [ 585, 592, 0,  'evening' ] ],
-       [ [ 54,  70,  16, 'midnight' ] ],
-       [ [ 62,  74,  -4, 'MIDNIGHTmidnight' ] ]
+       {
+        'beg'   => 249,
+        'pass'  => 0,
+        'post'  => ' lined the',
+        'pre'   => '   Parked ',
+        'end'   => 254,
+        'delta' => 1,
+        'orig'  => 'cars',
+        'rep'   => 'bikes'
+       },
+       {
+        'beg'   => 561,
+        'pass'  => 1,
+        'post'  => ' clothes. ',
+        'pre'   => 'ressed in ',
+        'end'   => 568,
+        'delta' => 0,
+        'orig'  => 'evening',
+        'rep'   => 'women\'s'
+       },
+       {
+        'beg'   => 54,
+        'pass'  => 2,
+        'post'  => '. From the',
+        'pre'   => '   IT was ',
+        'end'   => 78,
+        'delta' => 16,
+        'orig'  => 'midnight',
+        'rep'   => 'midnightMIDNIGHTmidnight'
+       },
+       {
+        'beg'   => 62,
+        'pass'  => 3,
+        'post'  => '. From the',
+        'pre'   => 's midnight',
+        'end'   => 74,
+        'delta' => -4,
+        'orig'  => 'MIDNIGHTmidnight',
+        'rep'   => ' (midnacht!)'
+       }
       ],
       'third' =>
-[
-    [ [ 304, 309, 1, 'cars' ] ],
-    [
-        [ 84,  117, 8, 'of' ],
-        [ 122, 132, 8, 'of' ],
-        [ 172, 182, 8, 'of' ],
-        [ 249, 259, 8, 'of' ],
-        [ 434, 444, 8, 'of' ],
-        [ 597, 607, 8, 'of' ]
-    ],
-    [
-        [ 62,  87,  23, '. ' ],
-        [ 331, 356, 23, '. ' ],
-        [ 500, 525, 23, '. ' ],
-        [ 640, 665, 23, '. ' ],
-        [ 720, 745, 23, '. ' ],
-        [ 890, 915, 23, '. ' ]
-    ],
-    [ [ 703, 712, 0, 'evening' ] ],
-    [ [ 856, 864, 4, 'cane' ] ],
-    [ [ 423, 427, 2, 'in' ], [ 700, 704, 2, 'in' ], [ 773, 777, 2, 'in' ] ],
-    [ [ 6,   13,  0, 'CHAPTER' ] ]
-],
+      [
+       {
+        'beg'   => 249,
+        'pass'  => 0,
+        'post'  => ' lined the',
+        'pre'   => '   Parked ',
+        'end'   => 254,
+        'delta' => 1,
+        'orig'  => 'cars',
+        'rep'   => 'bikes'
+       },
+       {
+        'beg'   => 84,
+        'pass'  => 1,
+        'post'  => ' one of Wa',
+        'pre'   => 'rilliance ',
+        'end'   => 94,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 99,
+        'pass'  => 1,
+        'post'  => ' Washingto',
+        'pre'   => 'ce of one ',
+        'end'   => 109,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 149,
+        'pass'  => 1,
+        'post'  => ' a large e',
+        'pre'   => 'he lights ',
+        'end'   => 159,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'  => 226,
+        'pass' => 1,
+        'post' => ' the stree',
+        'pre'  => 'sidewalks
+',
+        'end'   => 236,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 386,
+        'pass'  => 1,
+        'post'  => ' the embas',
+        'pre'   => ' in front ',
+        'end'   => 396,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 526,
+        'pass'  => 1,
+        'post'  => ' the embas',
+        'pre'   => 'oad steps ',
+        'end'   => 536,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 62,
+        'pass'  => 2,
+        'post'  => 'From the b',
+        'pre'   => 's midnight',
+        'end'   => 87,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 331,
+        'pass'  => 2,
+        'post'  => 'One by one',
+        'pre'   => 'ide street',
+        'end'   => 356,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 498,
+        'pass'  => 2,
+        'post'  => 'An importa',
+        'pre'   => 'y to leave',
+        'end'   => 523,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 638,
+        'pass'  => 2,
+        'post'  => 'Upon them ',
+        'pre'   => 'ly lighted',
+        'end'   => 663,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 716,
+        'pass'  => 2,
+        'post'  => 'One was a ',
+        'pre'   => 'ng clothes',
+        'end'   => 741,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 880,
+        'pass'  => 2,
+        'post'  => 'The two me',
+        'pre'   => ' the steps',
+        'end'   => 905,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 701,
+        'pass'  => 3,
+        'post'  => ' clothes. ',
+        'pre'   => 'ressed in ',
+        'end'   => 708,
+        'delta' => 0,
+        'orig'  => 'evening',
+        'rep'   => 'women\'s'
+       },
+       {
+        'beg'  => 850,
+        'pass' => 4,
+        'post' => ' as he
+des',
+        'pre'   => 'n a stout ',
+        'end'   => 858,
+        'delta' => 4,
+        'orig'  => 'cane',
+        'rep'   => 'vibrator'
+       },
+       {
+        'beg'   => 423,
+        'pass'  => 5,
+        'post'  => ' front OVE',
+        'pre'   => 'the space ',
+        'end'   => 427,
+        'delta' => 2,
+        'orig'  => 'in',
+        'rep'   => 'skin'
+       },
+       {
+        'beg'   => 700,
+        'pass'  => 5,
+        'post'  => ' women\'s c',
+        'pre'   => 'n dressed ',
+        'end'   => 704,
+        'delta' => 2,
+        'orig'  => 'in',
+        'rep'   => 'skin'
+       },
+       {
+        'beg'   => 773,
+        'pass'  => 5,
+        'post'  => 'dividual; ',
+        'pre'   => 'ay-haired ',
+        'end'   => 777,
+        'delta' => 2,
+        'orig'  => 'in',
+        'rep'   => 'skin'
+       },
+       {
+        'beg'  => 6,
+        'pass' => 6,
+        'post' => ' I
 
+     F',
+        'pre'   => '     ',
+        'end'   => 13,
+        'delta' => 0,
+        'orig'  => 'CHAPTER',
+        'rep'   => 'Chapped'
+       }
+      ],
 
       'third_revised' =>
-[
-    [ [ 382, 387, 1, 'cars' ] ],
-    [
-        [ 84,  140, 8, 'of' ],
-        [ 145, 155, 8, 'of' ],
-        [ 195, 205, 8, 'of' ],
-        [ 272, 282, 8, 'of' ],
-        [ 482, 492, 8, 'of' ],
-        [ 691, 701, 8, 'of' ]
-    ],
-    [
-        [ 62,  87,  23, '. ' ],
-        [ 331, 356, 23, '. ' ],
-        [ 502, 527, 23, '. ' ],
-        [ 642, 667, 23, '. ' ],
-        [ 724, 749, 23, '. ' ],
-        [ 900, 925, 23, '. ' ]
-    ],
-    [ [ 707, 716, 0, 'evening' ] ],
-    [ [ 862, 870, 4, 'cane' ] ],
-    [ [ 423, 427, 2, 'in' ], [ 700, 704, 2, 'in' ], [ 773, 777, 2, 'in' ] ],
-    [ [ 6,   13,  0, 'CHAPTER' ] ]
-],
-  'fourth' =>
-    [
-          [ [ 605, 623, 3, 'individual; the' ] ]
+      [
+       {
+        'beg'   => 249,
+        'pass'  => 0,
+        'post'  => ' lined the',
+        'pre'   => '   Parked ',
+        'end'   => 254,
+        'delta' => 1,
+        'orig'  => 'cars',
+        'rep'   => 'bikes'
+       },
+       {
+        'beg'   => 84,
+        'pass'  => 1,
+        'post'  => ' one of Wa',
+        'pre'   => 'rilliance ',
+        'end'   => 94,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 99,
+        'pass'  => 1,
+        'post'  => ' Washingto',
+        'pre'   => 'ce of one ',
+        'end'   => 109,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 149,
+        'pass'  => 1,
+        'post'  => ' a large e',
+        'pre'   => 'he lights ',
+        'end'   => 159,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'  => 226,
+        'pass' => 1,
+        'post' => ' the stree',
+        'pre'  => 'sidewalks
+',
+        'end'   => 236,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 386,
+        'pass'  => 1,
+        'post'  => ' the embas',
+        'pre'   => ' in front ',
+        'end'   => 396,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 526,
+        'pass'  => 1,
+        'post'  => ' the embas',
+        'pre'   => 'oad steps ',
+        'end'   => 536,
+        'delta' => 8,
+        'orig'  => 'of',
+        'rep'   => 'OVER-THERE'
+       },
+       {
+        'beg'   => 62,
+        'pass'  => 2,
+        'post'  => 'From the b',
+        'pre'   => 's midnight',
+        'end'   => 87,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 331,
+        'pass'  => 2,
+        'post'  => 'One by one',
+        'pre'   => 'ide street',
+        'end'   => 356,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 498,
+        'pass'  => 2,
+        'post'  => 'An importa',
+        'pre'   => 'y to leave',
+        'end'   => 523,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 638,
+        'pass'  => 2,
+        'post'  => 'Upon them ',
+        'pre'   => 'ly lighted',
+        'end'   => 663,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 716,
+        'pass'  => 2,
+        'post'  => 'One was a ',
+        'pre'   => 'ng clothes',
+        'end'   => 741,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 880,
+        'pass'  => 2,
+        'post'  => 'The two me',
+        'pre'   => ' the steps',
+        'end'   => 905,
+        'delta' => 23,
+        'orig'  => '. ',
+        'rep'   => '. And it was all DOOMED. '
+       },
+       {
+        'beg'   => 701,
+        'pass'  => 3,
+        'post'  => ' clothes. ',
+        'pre'   => 'ressed in ',
+        'end'   => 708,
+        'delta' => 0,
+        'orig'  => 'evening',
+        'rep'   => 'women\'s'
+       },
+       {
+        'beg'  => 850,
+        'pass' => 4,
+        'post' => ' as he
+des',
+        'pre'   => 'n a stout ',
+        'end'   => 858,
+        'delta' => 4,
+        'orig'  => 'cane',
+        'rep'   => 'vibrator'
+       },
+       {
+        'beg'   => 423,
+        'pass'  => 5,
+        'post'  => ' front OVE',
+        'pre'   => 'the space ',
+        'end'   => 427,
+        'delta' => 2,
+        'orig'  => 'in',
+        'rep'   => 'skin'
+       },
+       {
+        'beg'   => 700,
+        'pass'  => 5,
+        'post'  => ' women\'s c',
+        'pre'   => 'n dressed ',
+        'end'   => 704,
+        'delta' => 2,
+        'orig'  => 'in',
+        'rep'   => 'skin'
+       },
+       {
+        'beg'   => 773,
+        'pass'  => 5,
+        'post'  => 'dividual; ',
+        'pre'   => 'ay-haired ',
+        'end'   => 777,
+        'delta' => 2,
+        'orig'  => 'in',
+        'rep'   => 'skin'
+       },
+       {
+        'beg'  => 6,
+        'pass' => 6,
+        'post' => ' I
 
-    ],
+     F',
+        'pre'   => '     ',
+        'end'   => 13,
+        'delta' => 0,
+        'orig'  => 'CHAPTER',
+        'rep'   => 'Chapped'
+       }
+      ],
+      'fourth' =>
+      [
+       {
+        'beg'  => 605,
+        'pass' => 0,
+        'post' => '
+other a s',
+        'pre'   => 'ay-haired ',
+        'end'   => 623,
+        'delta' => 3,
+        'orig'  => 'individual; the',
+        'rep'   => 'individual!; --The'
+       }
+      ],
 
     };
 

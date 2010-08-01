@@ -188,68 +188,6 @@ sub do_finds_and_reps {
   return \@change_metadata; # array of hrefs (keys: beg, end, delta, orig, etc)
 }
 
-
-sub do_finds_and_reps_old {
-  my $text_ref      = shift;
-  my $find_replaces = shift; # aref of aref: a series of pairs
-
-  my $opts = shift;
-  my $LIVE_DANGEROUSLY = $opts->{ LIVE_DANGEROUSLY };
-
-  my $text_copy;
-  unless( $LIVE_DANGEROUSLY ) {
-    $text_copy = ${ $text_ref };
-  }
-
-  my @locations;
-  my $pass = 0;
-  eval {
-    foreach my $sub_pair ( @{ $find_replaces } ) {
-      my ($find_pat, $replace) = @{ $sub_pair };
-
-      my @pass = ();
-      my $delta_sum = 0; # running total of deltas for the pass
-
-      ${ $text_ref } =~
-        s{$find_pat}
-         {
-           my $s = eval "return qq{$replace}"; # TODO no need for return? # eval qq{ $replace };
-#           my $s = eval qq{ $replace }; # but just using this breaks 02-*.t
-           # ($DEBUG) && print STDERR "match: $&, 1st: $1, subst: $s\n";
-           my $l1 = length( $& );
-           my $l2 = length( $s );
-           my $delta = $l2 - $l1;
-           # in here, pos points at the start of the match, and it uses
-           # char numbering fixed at the start of the s///ge run
-           my $p = pos( ${ $text_ref } ) + 1 + $delta_sum;
-           my $beg = $p;
-           my $end = $p + $l2;
-           push @pass, [$beg, $end, $delta, $&];
-           $delta_sum += $delta;
-           $s
-         }ge;
-
-      push @locations, \@pass;
-      $pass++;
-    }
-  };
-  if ($@) {
-    # Send error message to STDOUT so that it won't mess up test output.
-    # (and anyway, the elisp call shell-command-to-string merges in STDERR)
-    #
-    # The elisp function rep-run-perl-substitutions uses prefix "Problem".
-    # to spot error messages
-    print "Problem: $@\n";
-    # roll-back
-    @locations = ();
-    unless( $LIVE_DANGEROUSLY ) {
-      ${ $text_ref } = $text_copy;
-    }
-  }
-  revise_locations( \@locations );
-  return \@locations; # aref of aref of arefs of pairs
-}
-
 =item revise_locations
 
 Example usage (note, revises structure in-place):
@@ -307,8 +245,8 @@ and 532-- if there were any -- would need another 6).
 #    s{}{pos()}eg
 ## pos() uses a fixed numbering, in spite of any length changes throughout s///g
 ## so when a "pass" is completed, we need to revise *that pass*
-## and all of the *later* passes, which are the already processed ones,
-## because we're going in reverse.
+## and all of the following passes in the data, which are the already
+## processed ones, because we're going in reverse.
 
 sub revise_locations {
   my $data = shift;
@@ -350,41 +288,44 @@ sub revise_locations {
   } # end for $i, for each row
 }
 
-# TODO DELETE SOON
-# This version uses an aref of arefs still.
-sub revise_locations_oldish {
-#  ($debug) && print stderr "$0: revise_locations\n";
-  my $locs = shift;
-  # named array indicies for readability
-  my ($beg, $end, $delta, $orig ) = 0 .. 3;
+# Goal: drop the split delta in half biz, just apply the change
+# at the end point.  Experiment with this sometime. I expect no difference
+# at the rep.el end.
+sub revise_locations_exp {
+  my $data = shift;
   my %delta;
-  foreach my $pass ( reverse @{ $locs } ) {
+  my $last_pass = -1; # look ma, I'm defined.
+  # begin with the last row of data, and count down
+  for ( my $i = $#{ $data }; $i == 0; $i-- ) {
+    my $row = $data->[ $i ];
+    my $pass = $row->{ pass };
 
-    foreach my $row ( @{ $pass } ) {
-      foreach my $spot ( sort {$a <=> $b} keys %delta) {
-        if ( $row->[ $beg ] >= $spot ) {  # todo >= ok?
-          $row->[ $beg ] += $delta{ $spot };
-        }
-        if ( $row->[ $end ] >= $spot  ) { # TODO >= ok?
-          $row->[ $end ] += $delta{ $spot };
-        }
-      } # end foreach spot
-    } # end foreach row
-
-    foreach my $row ( @{ $pass } ) {
-      { no warnings 'uninitialized';
-        my $delta = $row->[ $delta ];
-        my ($first, $second) = divide_in_half( $delta );
-        $delta{ $row->[ $beg ] } += $first;
-
-        my $old_end = $row->[ $end ] - $delta;
-        $delta{ $old_end } += $second;
+    # deltas effect any locations after the point where they act
+    foreach my $spot ( sort {$a <=> $b} keys %delta) {
+      if ( $row->{ beg } >= $spot ) {     # TODO >= ok?
+        $row->{ beg } += $delta{ $spot };
       }
-    } # end foreach row
+      if ( $row->{ end } >= $spot  ) {    # TODO >= ok?
+        $row->{ end } += $delta{ $spot };
+      }
+    } # end foreach spot
 
-  } # end foreach pass
+    # when the pass number changes, revise %delta using
+    # all records already processed.
+
+    # Each record's delta acts half at end of the modified region.
+    if ($pass != $last_pass) {
+      for ( my $j = $#{ $data }; $j == $i; $j-- ) {
+        my $row = $data->[ $j ];
+        no warnings 'uninitialized';
+        my $delta = $row->{ delta };
+        my $old_end = $row->{ end } - $delta;
+        $delta{ $old_end } += $delta;
+      } # end for $j, for each row *later* than the $i row
+    }
+    $last_pass = $pass;
+  } # end for $i, for each row
 }
-
 
 =item divide_in_half
 
@@ -401,35 +342,6 @@ sub divide_in_half {
   my $second = int( $number/2 );
   my $first = $number - $second;
   return ($first, $second);
-}
-
-### TODO DELETE
-sub revise_locations_old {
-  my $locs = shift;
-  # named array indicies for readability
-  my ($BEG, $END, $DELTA, $ORIG ) = 0 .. 3;
-  my %delta;
-  foreach my $pass ( reverse @{ $locs } ) {
-
-    foreach my $row ( @{ $pass } ) {
-      foreach my $spot ( sort {$a <=> $b} keys %delta) {
-        if ( $row->[ $BEG ] >= $spot ) {  # TODO >= ok?
-          $row->[ $BEG ] += $delta{ $spot };
-        }
-        if ( $row->[ $END ] >= $spot  ) { # TODO >= ok?
-          $row->[ $END ] += $delta{ $spot };
-        }
-      } # end foreach spot
-    } # end foreach row
-
-    foreach my $row ( @{ $pass } ) {
-      { no warnings 'uninitialized';
-#        $delta{ $row->[ $END ] } += $row->[ $DELTA ];
-        $delta{ ($row->[ $END ] + 1) } += $row->[ $DELTA ];
-      }
-    } # end foreach row
-
-  } # end foreach pass
 }
 
 =item serialize_change_metadata
@@ -531,24 +443,24 @@ sub parse_perl_substitutions {
     my $raw_mods = join '', keys %{ $modifiers };
 
     # TODO BEGIN VESTIGIAL MAYBE?
-    my $open_bracket_pat =
-      qr{ ( [({[<] )                            # )}]>
-        }xms;
+#     my $open_bracket_pat =
+#       qr{ ( [({[<] )                            # )}]>
+#         }xms;
 
-    my $find_delims = $delims[0];
-    my $rep_delims  = $delims[1];
+#     my $find_delims = $delims[0];
+#     my $rep_delims  = $delims[1];
 
-    if ($find_delims =~ m{ $open_bracket_pat }xms ) {
-      strip_brackets( \$find );
-      ### TODO on multi-line $find, strip eol comments
-    } elsif ($rep_delims =~ m{ $open_bracket_pat }xms ) {
-      strip_brackets( \$rep );
-    } else {  # is this actually a *good* idea?
-      my $find_sep = substr( $find_delims, 0, 1 );
-      my $rep_sep  = substr( $find_delims, 0, 1 );
-      dequote( \$find, $find_sep );
-      dequote( \$rep,  $rep_sep  );
-    }
+#     if ($find_delims =~ m{ $open_bracket_pat }xms ) {
+#       strip_brackets( \$find );
+#       ### TODO on multi-line $find, strip eol comments
+#     } elsif ($rep_delims =~ m{ $open_bracket_pat }xms ) {
+#       strip_brackets( \$rep );
+#     } else {  # is this actually a *good* idea?
+#       my $find_sep = substr( $find_delims, 0, 1 );
+#       my $rep_sep  = substr( $find_delims, 0, 1 );
+#       dequote( \$find, $find_sep );
+#       dequote( \$rep,  $rep_sep  );
+#     }
     # TODO END VESTIGIAL MAYBE?
 
     accumulate_find_reps( \@find_reps, $find, $rep, $raw_mods );

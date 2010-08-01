@@ -77,36 +77,6 @@ END_S
   $substitutions
 }
 
-# Some examples from perlre to think about:
-# Might be able to support 'e', but not 'ee' (used up one e internally).
-# Can I support multi-line substitutions ("x")?
-# Need to add bracket delimiter cases, mixed brackets,
-# and *mixed* bracket and quote delims.
-
-#                  s/%(.)/$percent{$1} || $&/ge;       # expr now, so /e
-#                  s/^=(\w+)/pod($1)/ge;       # use function call
-
-#                  # expand variables in $_, but dynamics only, using
-#                  # symbolic dereferencing
-#                  s/\$(\w+)/${$1}/g;
-
-#                  # Add one to the value of any numbers in the string
-#                  s/(\d+)/1 + $1/eg;
-
-#                  # This will expand any embedded scalar variable
-#                  # (including lexicals) in $_ : First $1 is interpolated
-#                  # to the variable name, and then evaluated
-#                  s/(\$\w+)/$1/eeg;
-
-#                  # Delete (most) C comments.
-#                  $program =~ s {
-#                      /\*     # Match the opening delimiter.
-#                      .*?     # Match a minimal number of characters.
-#                      \*/     # Match the closing delimiter.
-#                  } []gsx;
-
-
-
 =item define_expected
 
 =cut
@@ -120,10 +90,10 @@ my $expected_simple = [
     [ '(?i)aaa',          'XXX' ],
     [ '(?x) bogus ',      'lame' ],
     [ '/usr/bin',         '/usr/local/bin' ],
-    [ 'JOKE',             '/bin/laden' ],
-    [ '/bin/laden',       '<stale humor alert>' ],
+    [ 'JOKE',             '\/bin\/laden' ],
+    [ '\/bin\/laden',       '<stale humor alert>' ],
     [ 'by, the, way',     'by the way' ],
-    [ '(?i)kirk|spock /', 'yoda|wookie /' ],
+    [ '(?i)kirk\|spock /', 'yoda\|wookie /' ],
     [ 'crummy buttons',   'spinach' ],
     [ '(?ms)stork',       'raven' ],
     [ '\\bgreen\\b',      'mauve' ],
