@@ -58,14 +58,22 @@
 ;;   (require 'rep)
 ;;   (rep-standard-setup)
 
+;; Alternately, if you don't want to use "\C-c." (control c dot) as
+;; your standard prefix, you might do this to, for example, use
+;; "\C-c|" (control c pipe) instead:
+
+;;   (require 'rep)
+;;   (setq rep-key-prefix [(control ?c) ?|]   ;; for rep-modified-mode
+;;   (rep-standard-setup)
+
 ;; USAGE
 
 ;; When editing a file you'd like to modify you can use "C-c.S" to open a
 ;; small window suitable for entering a series of perl substitution
 ;; commands, typically of the form: "s/<find_pattern>/<replace_string>/g;".
 
-;; When you're ready to try them, "C-c.R" will run these substitutions on
-;; the other window.
+;; When you're ready, "C-c.R" will run these substitutions on the
+;; other window.
 
 ;; The usual font-lock syntax coloring will be temporarily
 ;; shut-off, so that modified strings can be indicated easily,
@@ -410,19 +418,13 @@ bindings should be left alone."
 
   (define-key rep-substitutions-mode-map "\C-x#"
     'rep-substitutions-apply-to-other-window)
-  )
 
-(defun rep-define-entry-key (&optional prefix)
-  "Defines a global keybinding to open a new substitutions buffer.
-Defaults to \"Control-c . S\".  A different prefix may be given
-as an argument, for example:
-  (rep-define-entry-key \"M-o\")
-would define the key-strokes \"Alt o S\"."
-  (if rep-trace (message "%s" "rep-define-entry-key"))
-;;  (interactive) ;; DEBUG
-  (unless prefix (setq prefix "\C-c."))
-  (global-set-key (format "%sS" prefix) 'rep-open-substitutions)
-  (message "Defined bindings for key: S under the prefix %s" prefix)
+  ;; bind global "entry point" command to "C-c.S"
+  (let* ((prefix rep-key-prefix)
+         )
+    (global-set-key (format "%sS" prefix) 'rep-open-substitutions)
+    (if rep-debug
+        (message "Defined bindings for key: S under the prefix %s" prefix)))
   )
 
 (defun rep-open-substitutions ()
@@ -545,15 +547,27 @@ that use perl's syntax \(and are interpreted using perl\).
 \\{rep-substitutions-mode-map}"
   (use-local-map rep-substitutions-mode-map))
 
-(defcustom rep-key-prefix [(control ?c) ?.]
-  "Prefix key to use for the rep-modified-mode minor mode.
-The value of this variable is checked as part of loading rep-modififed-mode.
-After that, changing the prefix key requires manipulating keymaps."
-  ;; Note: the following "FIXME" is from footnote.el:
-  ;; FIXME: the type should be a key-sequence, but it seems Custom
-  ;; doesn't support that yet.
-  ;; :type  'string
-  )
+
+;; TODO
+;; An issue that I don't quite understand:  Using footnote.el as
+;; an example, you'll see that it defines the key prefix for it's
+;; minor-mode using some sort of vector of chars, like the
+;; "rep-key-prefix-internal" here:
+;;
+;; (defcustom rep-key-prefix-internal [(control ?c) ?.]
+;;   "Prefix key to use for the rep-modified-mode minor mode.
+;; This is in the \"internal Emacs key representation\".
+;; The value of this variable is checked as part of loading rep-modififed-mode.
+;; After that, changing the prefix key requires manipulating keymaps."
+;;   )
+;;
+;; The reason for this is apparently some sort of limitation of custom.el.
+;; Since I can't stand custom.el, I'm dropping support for it for now,
+;; and going with a method of specifying keybindings that I understand
+;; better.
+
+(defvar rep-key-prefix (kbd "C-c .")
+  "Prefix key to use for the rep-modified-mode minor mode.")
 
 (defvar rep-modified-mode-map
   (let ((map (make-sparse-keymap)))
